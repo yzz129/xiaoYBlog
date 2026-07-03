@@ -1,0 +1,39 @@
+@use "./preload.scss" as *;
+
+*:fullscreen {
+    // 全屏时显式设置背景色，避免 backdrop 影响显示。
+    background-color: $color-white;
+}
+
+html,
+body {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-size: 16px;
+    height: 100%;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-family: -apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Helvetica Neue, Helvetica,
+        Arial, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol;
+}
+
+#app {
+    height: 100%;
+}
+
+a,
+a:focus,
+a:hover {
+    outline: none;
+    text-decoration: none;
+}
+
+ul,
+li {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}

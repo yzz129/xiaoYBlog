@@ -1,0 +1,29 @@
+// global styles
+
+@use "./reset.scss";
+@use "./animation.scss";
+@use "./atom.scss";
+@use "./common.scss";
+@use "./antd.scss";
+
+html,
+body,
+#app {
+    min-height: 100%;
+}
+
+body {
+    color: #0f172a;
+    background: #eef3f9;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizelegibility;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+img {
+    max-width: 100%;
+}

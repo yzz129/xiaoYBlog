@@ -1,0 +1,112 @@
+# Comments are provided throughout this file to help you get started.
+# If you need more help, visit the Docker Compose reference guide at
+# https://docs.docker.com/go/compose-spec-reference/
+
+# Here the instructions define your application as a service called "server".
+# This service is built from the Dockerfile in the current directory.
+# You can add other services your application may depend on here, such as a
+# database or a cache. For examples, see the Awesome Compose repository:
+# https://github.com/docker/awesome-compose
+services:
+  server:
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-8002}
+      ALLOW_CLIENT: ${ALLOW_CLIENT}
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_MULTIPLE_STATEMENTS: ${MYSQL_MULTIPLE_STATEMENTS}
+      MYSQL_WAIT_FOR_CONNECTIONS: ${MYSQL_WAIT_FOR_CONNECTIONS}
+      MYSQL_CHARSET: ${MYSQL_CHARSET}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: ${REDIS_DB}
+      REDIS_CONNECT_TIMEOUT_MS: ${REDIS_CONNECT_TIMEOUT_MS}
+      REDIS_RETRY_AFTER_MS: ${REDIS_RETRY_AFTER_MS}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE_DAYS: ${JWT_EXPIRE_DAYS}
+      EMAIL_SERVICE: ${EMAIL_SERVICE}
+      EMAIL_PORT: ${EMAIL_PORT}
+      EMAIL_SECURE_CONNECTION: ${EMAIL_SECURE_CONNECTION}
+      EMAIL_AUTH_USER: ${EMAIL_AUTH_USER}
+      EMAIL_AUTH_PASS: ${EMAIL_AUTH_PASS}
+      AUTHOR_EMAIL: ${AUTHOR_EMAIL}
+      BLOG_NAME: ${BLOG_NAME}
+      SITE_URL: ${SITE_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL}
+      AI_KNOWLEDGE_CUTOFF: ${AI_KNOWLEDGE_CUTOFF}
+      AI_SESSION_TTL_SECONDS: ${AI_SESSION_TTL_SECONDS}
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_PORT: ${MINIO_PORT}
+      MINIO_USE_SSL: ${MINIO_USE_SSL}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      MINIO_REGION: ${MINIO_REGION}
+      MINIO_PUBLIC_BASE_URL: ${MINIO_PUBLIC_BASE_URL}
+    ports:
+      - ${PORT:-8002}:${PORT:-8002}
+    depends_on:
+      - minio
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    env_file:
+      - .env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - ${MINIO_PORT:-9000}:9000
+      - 9001:9001
+    volumes:
+      - minio-data:/data
+
+# The commented out section below is an example of how to define a PostgreSQL
+# database that your application can use. `depends_on` tells Docker Compose to
+# start the database before your application. The `db-data` volume persists the
+# database data between container restarts. The `db-password` secret is used
+# to set the database password. You must create `db/password.txt` and add
+# a password of your choosing to it before running `docker-compose up`.
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#   db:
+#     image: postgres
+#     restart: always
+#     user: postgres
+#     secrets:
+#       - db-password
+#     volumes:
+#       - db-data:/var/lib/postgresql/data
+#     environment:
+#       - POSTGRES_DB=example
+#       - POSTGRES_PASSWORD_FILE=/run/secrets/db-password
+#     expose:
+#       - 5432
+#     healthcheck:
+#       test: [ "CMD", "pg_isready" ]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+# volumes:
+#   db-data:
+volumes:
+  minio-data:
+# secrets:
+#   db-password:
+#     file: db/password.txt

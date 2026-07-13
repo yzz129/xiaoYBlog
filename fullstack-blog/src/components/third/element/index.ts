@@ -3,9 +3,9 @@
  * @description: 全局按需注册 Element Plus 组件
  */
 import { App } from "vue";
-import { ElImage } from "element-plus";
+import { ElImage, ElScrollbar } from "element-plus";
 
-const components = [ElImage];
+const components = [ElImage, ElScrollbar];
 
 export default {
     install(app: App): App {

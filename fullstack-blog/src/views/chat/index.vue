@@ -1,6 +1,12 @@
 <template>
     <base-layout>
         <section class="chat-room" :class="{ 'chat-room--direct': isDirectMode }">
+            <!-- 聊天页沿用真实会话数据，仅重做为轻盈的手账式标题区。 -->
+            <PageHeading
+                :title="isDirectMode ? '悄悄话' : '小站茶话会'"
+                :description="isDirectMode ? '一封只送给对方的即时小纸条' : '遇见正在小站散步的朋友，聊聊此刻的灵感'"
+                :icon="isDirectMode ? 'plane' : 'message'"
+            />
             <a-card class="card-chat" hoverable>
                 <template #title>
                     <div class="chat-header">
@@ -120,6 +126,7 @@ import {
 } from "@ant-design/icons-vue";
 
 import type { DirectMessageDTO, UserDTO } from "@/bean/dto";
+import PageHeading from "@/components/page-heading.vue";
 import { userService } from "@/services/user";
 import { useStore } from "@/stores";
 import { defaultAvatar, resolveAvatar } from "@/utils/avatar";

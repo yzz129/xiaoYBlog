@@ -54,7 +54,7 @@
             <li class="menu__item">
                 <router-link to="/chat">
                     <CommentOutlined />
-                    <span>在线交流</span>
+                    <span>聊天室</span>
                     <RightOutlined class="menu__arrow" />
                 </router-link>
             </li>
@@ -99,13 +99,13 @@ const menuAvatar = computed(() => resolveAvatar(store.userInfo?.avatar));
     width: 276px;
     max-width: calc(100vw - 30px);
     height: 100vh;
-    background: linear-gradient(180deg, #071a2d 0%, #0e2b45 42%, #174866 100%);
+    background: linear-gradient(180deg, #ffffff 0%, #f3f9fe 100%);
     transform: translate3d(-100%, 0, 0);
     transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.24s ease;
 
     &.is-visible {
         transform: translate3d(0, 0, 0);
-        box-shadow: 0 28px 48px rgba(15, 23, 42, 0.34);
+        box-shadow: 0 28px 54px rgb(31 74 110 / 24%);
     }
 }
 
@@ -147,8 +147,8 @@ const menuAvatar = computed(() => resolveAvatar(store.userInfo?.avatar));
 
 .menu__header {
     padding: 24px 22px 18px;
-    background: linear-gradient(180deg, rgba(241, 250, 255, 0.06), rgba(255, 255, 255, 0.02));
-    border-bottom: 1px solid rgba(174, 223, 245, 0.1);
+    background: linear-gradient(180deg, #f7fcff, #edf7fd);
+    border-bottom: 1px solid var(--ui-line);
     text-align: center;
 }
 
@@ -157,8 +157,8 @@ const menuAvatar = computed(() => resolveAvatar(store.userInfo?.avatar));
     align-items: center;
     gap: 8px;
     margin-bottom: 18px;
-    color: #edf8ff;
-    text-shadow: 0 2px 10px rgba(84, 193, 225, 0.24);
+    color: var(--ui-primary-strong);
+    text-shadow: none;
 
     h2 {
         margin: 0;
@@ -199,8 +199,8 @@ const menuAvatar = computed(() => resolveAvatar(store.userInfo?.avatar));
     height: 100%;
     border-radius: 50%;
     object-fit: cover;
-    border: 2px solid rgba(255, 255, 255, 0.14);
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+    border: 3px solid #fff;
+    box-shadow: 0 12px 24px rgb(63 111 151 / 16%);
 }
 
 .menu__item {
@@ -214,7 +214,7 @@ const menuAvatar = computed(() => resolveAvatar(store.userInfo?.avatar));
         gap: 12px;
         padding: 0 14px;
         min-height: 48px;
-        color: #d4dde7;
+        color: var(--ui-text);
         border-radius: 14px;
         transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 
@@ -226,7 +226,7 @@ const menuAvatar = computed(() => resolveAvatar(store.userInfo?.avatar));
         }
 
         &.router-link-active {
-            background: linear-gradient(135deg, #2a74ba, #58c4c0);
+            background: linear-gradient(135deg, #4c9be8, #71cdb8);
             color: #fff;
             box-shadow: 0 14px 28px rgba(22, 83, 132, 0.28);
         }
@@ -234,8 +234,8 @@ const menuAvatar = computed(() => resolveAvatar(store.userInfo?.avatar));
 
     &:hover > a {
         transform: translateX(4px);
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(132, 209, 230, 0.07));
-        color: #fff;
+        background: #eaf5ff;
+        color: var(--ui-primary-strong);
 
         .menu__arrow {
             transform: translateX(2px);

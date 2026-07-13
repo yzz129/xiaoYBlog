@@ -1,5 +1,14 @@
 <template>
     <section class="admin-page-wrapper">
+        <!-- 标签数据与交互保持原样，仅增加轻量的页面识别区。 -->
+        <div class="admin-page-heading">
+            <div>
+                <span class="admin-page-heading__eyebrow">TINY LABELS</span>
+                <h1>标签贴纸</h1>
+                <p>用短小的关键词，把散落的灵感串成一张地图。</p>
+            </div>
+            <DoodleIcon name="tag" :size="54" />
+        </div>
         <a-table
             row-key="id"
             :data-source="tagList"
@@ -24,6 +33,7 @@ import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { TagDTO } from "@/bean/dto";
+import DoodleIcon from "@/components/doodle-icon.vue";
 import { useAsyncLoading } from "@/hooks/async";
 import { tagService } from "@/services/tag";
 import { format } from "@/utils/date-utils";

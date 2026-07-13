@@ -10,15 +10,22 @@
                         <MenuOutlined />
                     </button>
                     <router-link to="/" class="logo-wrap" aria-label="返回首页">
-                        <img src="@/assets/img/logo.webp" alt="小Y博客" width="180" height="50" />
+                        <span class="brand-mascot" aria-hidden="true"><DoodleIcon name="mascot" /></span>
+                        <strong>小Y博客</strong>
                     </router-link>
+                    <!-- 桌面端主导航：沿用原有路由，只调整信息层级与视觉呈现。 -->
+                    <nav class="site-nav" aria-label="主导航">
+                        <router-link to="/"><DoodleIcon name="plane" />发现</router-link>
+                        <router-link to="/categories"><DoodleIcon name="folder" />分类</router-link>
+                        <router-link to="/tags"><DoodleIcon name="tag" />标签</router-link>
+                        <router-link to="/timeline"><DoodleIcon name="clock" />时间轴</router-link>
+                        <router-link to="/messages"><DoodleIcon name="message" />留言</router-link>
+                        <!-- 聊天室入口使用茶杯手绘图标，与留言板区分并保持清新风格。 -->
+                        <router-link to="/chat"><DoodleIcon name="cup" />聊天室</router-link>
+                    </nav>
                 </div>
 
                 <div class="header-center">
-                    <div class="site-badge">
-                        <FireOutlined />
-                        <span>博客分享交流平台</span>
-                    </div>
                     <a-input-search
                         v-model:value="searchKeyword"
                         class="site-search"
@@ -36,7 +43,7 @@
                     </a-input-search>
                 </div>
 
-                <div class="header-right">
+                <div class="header-right" :class="{ 'header-right--guest': !isAuthed }">
                     <router-link v-if="!isAuthed" to="/login" class="header-pill header-pill--primary" title="登录">
                         <UserOutlined />
                         <span>登录</span>
@@ -81,6 +88,14 @@
             </div>
         </header>
 
+        <!-- 首页报头只承担内容定位，不改变文章列表的数据与交互。 -->
+        <section v-if="isHome" class="home-masthead">
+            <div>
+                <h1>发现<span>值得读</span>的内容</h1>
+            </div>
+            <span class="masthead-doodle" aria-hidden="true"><DoodleIcon name="plane" /></span>
+        </section>
+
         <main class="base-layout__main">
             <slot />
         </main>
@@ -111,7 +126,6 @@ import { throttle } from "lodash-es";
 import {
     AppstoreOutlined,
     ArrowUpOutlined,
-    FireOutlined,
     HomeOutlined,
     MenuOutlined,
     MessageOutlined,
@@ -122,6 +136,7 @@ import {
 import BaseFooter from "./base-footer.vue";
 import BaseMenu from "./base-menu.vue";
 import HotColumn from "./hot-column.vue";
+import DoodleIcon from "@/components/doodle-icon.vue";
 import { useDmNotification } from "@/composables/use-dm-notification";
 import { useStore } from "@/stores";
 import { resolveAvatar } from "@/utils/avatar";
@@ -131,6 +146,7 @@ import { setScrollTop } from "@/utils/dom";
 const store = useStore();
 const router = useRouter();
 const route = useRoute();
+const isHome = computed(() => route.name === "Home");
 const { unreadTotal, unreadConversations } = useDmNotification();
 
 const isAuthed = computed(() => Boolean(store.isAuthed));
@@ -244,17 +260,17 @@ onBeforeUnmount(() => {
 .base-layout__wrapper {
     min-height: 100vh;
     background:
-        radial-gradient(circle at top left, rgba(34, 197, 94, 0.08), transparent 26%),
-        radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 24%),
-        linear-gradient(180deg, #eff5fb 0%, #e8eef7 100%);
+        radial-gradient(circle at 8% 12%, rgb(113 205 184 / 10%), transparent 24%),
+        radial-gradient(circle at 92% 8%, rgb(76 155 232 / 12%), transparent 28%),
+        linear-gradient(180deg, #f4faff 0%, #eef7fd 58%, #f8fcff 100%);
 }
 
 .base-layout__header {
     position: sticky;
     top: 0;
     z-index: 30;
-    padding: 18px 20px 0;
-    background: linear-gradient(180deg, rgba(242, 249, 255, 0.98) 0%, rgba(242, 249, 255, 0.78) 100%);
+    padding: 14px 20px 0;
+    background: linear-gradient(180deg, rgb(244 250 255 / 96%), rgb(244 250 255 / 78%));
     backdrop-filter: blur(14px);
     will-change: transform;
     transform: translateZ(0);
@@ -265,22 +281,22 @@ onBeforeUnmount(() => {
     overflow: hidden;
     width: min(1240px, 100%);
     margin: 0 auto;
-    padding: 18px 22px;
-    border: 1px solid rgba(155, 205, 238, 0.78);
-    border-radius: 28px;
-    background:
-        linear-gradient(135deg, rgba(217, 236, 251, 0.98) 0%, rgba(198, 226, 247, 0.99) 50%, rgba(185, 219, 241, 0.98) 100%);
+    padding: 12px 16px;
+    border: 1px solid var(--ui-line);
+    border-radius: 18px;
+    background: rgb(255 255 255 / 94%);
     box-shadow:
-        0 18px 34px rgba(98, 149, 188, 0.18),
-        inset 0 1px 0 rgba(255, 255, 255, 0.82);
+        0 14px 36px rgb(63 111 151 / 10%),
+        inset 0 1px 0 rgb(255 255 255 / 86%);
     display: grid;
-    grid-template-columns: auto minmax(420px, 620px) auto;
+    grid-template-columns: minmax(440px, 1fr) minmax(300px, 460px) auto;
     align-items: center;
     justify-content: space-between;
     gap: 24px;
 }
 
 .header-glow {
+    display: none;
     position: absolute;
     border-radius: 50%;
     filter: blur(8px);
@@ -316,6 +332,31 @@ onBeforeUnmount(() => {
     gap: 12px;
 }
 
+.site-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+
+    a {
+        position: relative;
+        padding: 9px 10px;
+        border-radius: 12px;
+        color: #4a6178;
+        font-size: 14px;
+        font-weight: 650;
+        white-space: nowrap;
+        transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+
+        &:hover,
+        &.router-link-active {
+            color: #2f80c5;
+            background: #eef7ff;
+            transform: translateY(-1px);
+        }
+    }
+}
+
 .header-right {
     justify-content: flex-end;
 }
@@ -324,25 +365,9 @@ onBeforeUnmount(() => {
     position: relative;
     z-index: 1;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     gap: 12px;
-}
-
-.site-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    align-self: center;
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: linear-gradient(180deg, rgba(239, 248, 255, 0.92), rgba(205, 229, 246, 0.96));
-    color: #3e7197;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    box-shadow: inset 0 0 0 1px rgba(159, 203, 233, 0.88);
 }
 
 .site-search {
@@ -381,7 +406,7 @@ onBeforeUnmount(() => {
 }
 
 .base-layout__main {
-    width: min(1240px, calc(100vw - 32px));
+    width: min(1180px, calc(100vw - 32px));
     margin: 0 auto;
     padding: 28px 0 0;
 }
@@ -398,8 +423,8 @@ onBeforeUnmount(() => {
 
 .logo-wrap img {
     display: block;
-    height: 50px;
-    filter: drop-shadow(0 8px 18px rgba(109, 163, 203, 0.18));
+    height: 42px;
+    filter: none;
 }
 
 .icon-button {
@@ -419,9 +444,9 @@ onBeforeUnmount(() => {
 .icon-button--light {
     width: 44px;
     height: 44px;
-    border-radius: 16px;
+    border-radius: 12px;
     color: #336b93;
-    background: linear-gradient(180deg, rgba(245, 251, 255, 0.88), rgba(210, 233, 247, 0.94));
+    background: #f2f8fd;
     box-shadow:
         inset 0 0 0 1px rgba(165, 209, 236, 0.9),
         0 8px 16px rgba(98, 149, 188, 0.14);
@@ -443,7 +468,7 @@ onBeforeUnmount(() => {
     gap: 8px;
     height: 44px;
     padding: 0 18px;
-    border-radius: 16px;
+    border-radius: 12px;
     font-size: 14px;
     font-weight: 700;
     white-space: nowrap;
@@ -535,6 +560,10 @@ onBeforeUnmount(() => {
     .header-shell {
         grid-template-columns: auto 1fr auto;
     }
+
+    .site-nav {
+        display: none;
+    }
 }
 
 @media screen and (max-width: 860px) {
@@ -543,7 +572,7 @@ onBeforeUnmount(() => {
     }
 
     .header-shell {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 14px;
         padding: 16px;
     }
@@ -560,7 +589,13 @@ onBeforeUnmount(() => {
     }
 
     .header-center {
+        grid-column: 1 / -1;
         order: 3;
+    }
+
+    .header-right--guest {
+        width: auto;
+        justify-content: flex-end;
     }
 
     .base-layout__main {
@@ -596,15 +631,19 @@ onBeforeUnmount(() => {
         gap: 8px;
     }
 
-    .header-center {
-        gap: 10px;
+    .header-right--guest {
+        display: flex;
+        width: auto;
+        grid-template-columns: none;
     }
 
-    .site-badge {
-        max-width: 100%;
-        padding: 6px 10px;
-        font-size: 12px;
-        letter-spacing: 0.02em;
+    .header-right--guest .header-pill {
+        width: auto;
+        min-width: 78px;
+    }
+
+    .header-center {
+        gap: 10px;
     }
 
     .header-pill {
@@ -670,13 +709,6 @@ onBeforeUnmount(() => {
         width: 42px;
         height: 42px;
         border-radius: 14px;
-    }
-
-    .site-badge {
-        width: 100%;
-        font-size: 11px;
-        line-height: 1.4;
-        text-align: center;
     }
 
     .header-right {

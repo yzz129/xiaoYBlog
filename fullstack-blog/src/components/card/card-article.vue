@@ -1,61 +1,51 @@
 <template>
-    <article class="article-card">
+    <article class="article-card" :class="{ 'article-card--featured': featured }">
+        <section class="article-card__body">
+            <router-link :to="`/article/${article.id}`" class="article-visual" :aria-label="article.article_name">
+                <el-image v-if="featured" :src="coverSource" fit="cover" class="article-poster" lazy />
+                <DoodleIcon v-else :name="illustrationName" class="article-doodle" />
+                <span v-if="featured" class="featured-note">Featured</span>
+            </router-link>
+        </section>
+
         <header class="article-card__header">
-            <div class="author-bar">
-                <router-link v-if="authorRoute" :to="authorRoute" class="author-link">
-                    <img class="author-avatar" :src="authorAvatar" :alt="article.author" width="52" height="52" />
-                </router-link>
-                <img v-else class="author-avatar" :src="authorAvatar" :alt="article.author" width="52" height="52" />
-
-                <div class="author-meta">
-                    <div class="author-row">
-                        <router-link v-if="authorRoute" :to="authorRoute" class="author-link author-name">
-                            {{ article.author }}
-                        </router-link>
-                        <span v-else class="author-name">{{ article.author }}</span>
-                    </div>
-
-                    <ul class="article-infolist">
-                        <li title="发布时间">
-                            <icon-svg class="align-middle" icon="time" />
-                            <time class="align-middle">{{ createTime }}</time>
-                        </li>
-                        <li title="文章分类">
-                            <icon-svg class="align-middle" icon="folder" />
-                            <router-link
-                                v-for="category in article.categories"
-                                :key="category.id"
-                                :to="{ name: 'Category', params: { name: category.categoryName } }"
-                                class="category align-middle"
-                            >
-                                <span>{{ category.categoryName }}</span>
-                            </router-link>
-                        </li>
-                        <li title="阅读量">
-                            <icon-svg class="align-middle" icon="eye" />
-                            <span class="align-middle">{{ article.read_num }}</span>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-
+            <span v-if="featured" class="article-pin">置顶</span>
             <router-link :to="`/article/${article.id}`" class="title-link">
                 <h2 class="article-title">{{ article.article_name }}</h2>
             </router-link>
-        </header>
-
-        <section class="article-card__body">
-            <router-link :to="`/article/${article.id}`">
-                <el-image :src="article.poster" fit="cover" class="article-poster" lazy />
-            </router-link>
             <p class="article-summary">{{ article.summary }}</p>
-        </section>
+
+            <div class="author-bar">
+                <router-link v-if="authorRoute" :to="authorRoute" class="author-link">
+                    <img class="author-avatar" :src="authorAvatar" :alt="article.author" width="28" height="28" />
+                </router-link>
+                <img v-else class="author-avatar" :src="authorAvatar" :alt="article.author" width="28" height="28" />
+                <router-link v-if="authorRoute" :to="authorRoute" class="author-name">{{ article.author }}</router-link>
+                <span v-else class="author-name">{{ article.author }}</span>
+                <span class="meta-dot">·</span>
+                <time>{{ createTime }}</time>
+                <template v-if="article.categories?.length">
+                    <span class="meta-dot">·</span>
+                    <router-link
+                        v-for="category in article.categories"
+                        :key="category.id"
+                        :to="{ name: 'Category', params: { name: category.categoryName } }"
+                        class="category"
+                    >
+                        {{ category.categoryName }}
+                    </router-link>
+                </template>
+            </div>
+        </header>
 
         <div class="article-card__footer">
             <router-link class="read-more" :to="`/article/${article.id}`">
-                <span class="read-more-text">继续阅读</span>
-                <icon-svg icon="read" class="align-middle" />
+                <span>{{ featured ? "继续阅读" : article.tags?.[0]?.tagName ? `# ${article.tags[0].tagName}` : "阅读全文" }}</span>
+                <span v-if="featured" aria-hidden="true">→</span>
             </router-link>
+            <button v-if="!featured" class="bookmark-doodle" type="button" title="阅读文章" @click="$router.push(`/article/${article.id}`)">
+                ♡
+            </button>
         </div>
     </article>
 </template>
@@ -63,242 +53,221 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { ArticleDTO } from "@/bean/dto";
+import type { ArticleDTO } from "@/bean/dto";
+import DoodleIcon from "@/components/doodle-icon.vue";
+import EditorialDesk from "@/assets/illustrations/editorial-desk.webp";
 import { resolveAvatar } from "@/utils/avatar";
 import { format } from "@/utils/date-utils";
 
-const props = defineProps<{
-    article: ArticleDTO;
-}>();
+const props = withDefaults(
+    defineProps<{
+        article: ArticleDTO;
+        featured?: boolean;
+        visualIndex?: number;
+    }>(),
+    {
+        featured: false,
+        visualIndex: 0,
+    }
+);
 
-const createTime = computed(() => format(props.article.create_time, "YYYY年M月D日"));
+const doodles = ["laptop", "api", "note", "browser", "cup"] as const;
+const illustrationName = computed(() => doodles[Math.abs(props.visualIndex) % doodles.length]);
+const coverSource = computed(() => props.article.poster || EditorialDesk);
+const createTime = computed(() => format(props.article.create_time, "YYYY-MM-DD"));
 const authorAvatar = computed(() => resolveAvatar(props.article.author_avatar));
 const authorRoute = computed(() => (props.article.author_user_id ? `/user/${props.article.author_user_id}` : ""));
 </script>
 
 <style lang="scss" scoped>
 .article-card {
-    padding: 26px 28px 30px;
-    border-radius: 28px;
-    background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
-    border: 1px solid rgba(226, 232, 240, 0.8);
-
-    + .article-card {
-        margin-top: 28px;
-    }
+    position: relative;
+    display: grid;
+    grid-template-columns: 164px minmax(0, 1fr) auto;
+    gap: 22px;
+    align-items: center;
+    padding: 17px 0;
+    border-bottom: 1px solid var(--xy-line);
 }
 
+.article-card__body,
 .article-card__header {
-    color: #64748b;
+    min-width: 0;
+}
+
+.article-visual {
+    position: relative;
+    display: grid;
+    place-items: center;
+}
+
+.article-doodle {
+    width: 118px;
+    height: 78px;
+}
+
+.article-title {
+    margin: 0;
+    color: var(--xy-ink);
+    font-size: 18px;
+    font-weight: 900;
+    line-height: 1.45;
+}
+
+.article-summary {
+    margin: 6px 0 8px;
+    overflow: hidden;
+    color: var(--xy-text);
+    font-size: 13px;
+    line-height: 1.65;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .author-bar {
     display: flex;
     align-items: center;
-    gap: 14px;
-}
-
-.author-link {
-    display: inline-flex;
-    align-items: center;
+    gap: 7px;
+    color: var(--xy-muted);
+    font-size: 12px;
 }
 
 .author-avatar {
-    width: 52px;
-    height: 52px;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--xy-line);
     border-radius: 50%;
     object-fit: cover;
-    border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
-.author-meta {
-    flex: 1;
-    min-width: 0;
-}
-
-.author-row {
-    margin-bottom: 6px;
-}
-
-.author-name {
-    color: #0f172a;
-    font-size: 18px;
-    font-weight: 800;
-}
-
-.article-infolist {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
-    font-size: 13px;
-
-    > li {
-        display: inline-flex;
-        align-items: center;
-    }
-}
-
-.category + .category::before {
-    content: ", ";
-}
-
-.icon-svg {
-    margin-right: 4px;
-}
-
-.title-link {
-    display: block;
-}
-
-.article-title {
-    margin: 18px 0 0;
-    color: #0f172a;
-    font-size: clamp(1.8rem, 3vw, 2.5rem);
-    font-weight: 800;
-    line-height: 1.2;
-}
-
-.article-card__body {
-    margin-top: 18px;
-}
-
-.article-summary {
-    margin: 18px 0 0;
-    font-size: 16px;
-    color: #334155;
-    line-height: 1.9;
-}
-
-:deep(.article-poster) {
-    width: 100%;
-    height: 360px;
-    overflow: hidden;
-    border-radius: 24px;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+.author-name,
+.category {
+    color: var(--xy-text);
 }
 
 .article-card__footer {
-    margin-top: 22px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
 }
 
 .read-more {
-    display: inline-flex;
-    align-items: center;
-    padding: 10px 14px;
-    border-radius: 999px;
-    background: #edf4ff;
-    color: #1d4ed8;
-    font-weight: 700;
+    color: var(--xy-blue);
+    font-size: 12px;
+    white-space: nowrap;
 }
 
-.read-more-text {
-    margin-right: 6px;
-    font-size: 15px;
+.bookmark-doodle {
+    padding: 2px;
+    color: var(--xy-ink);
+    border: 0;
+    background: transparent;
+    font-size: 22px;
+    cursor: pointer;
 }
 
-@media screen and (max-width: 767px) {
+.article-card--featured {
+    grid-template-columns: minmax(300px, 42%) minmax(0, 1fr);
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--xy-line);
+    border-radius: 0 0 16px 0;
+    background: #fffefa;
+    box-shadow: 7px 7px 0 rgb(22 50 79 / 8%);
+}
+
+.article-card--featured .article-poster {
+    width: 100%;
+    height: 224px;
+}
+
+.article-card--featured .article-card__header {
+    padding: 24px 28px 22px;
+}
+
+.article-card--featured .article-title {
+    margin-top: 8px;
+    font-size: clamp(20px, 2vw, 26px);
+}
+
+.article-card--featured .article-summary {
+    margin: 12px 0 18px;
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.article-card--featured .article-card__footer {
+    position: absolute;
+    right: 28px;
+    bottom: 22px;
+}
+
+.article-card--featured .read-more {
+    display: flex;
+    gap: 8px;
+    color: var(--xy-coral);
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.featured-note {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    padding: 6px 10px;
+    color: var(--xy-ink);
+    background: var(--xy-yellow);
+    font-family: "Comic Sans MS", cursive;
+    font-size: 12px;
+    transform: rotate(-4deg);
+}
+
+.article-pin {
+    display: inline-block;
+    padding: 3px 7px;
+    color: #fff;
+    border-radius: 3px;
+    background: var(--xy-coral);
+    font-size: 11px;
+}
+
+@media (max-width: 700px) {
     .article-card {
-        padding: 18px 16px 22px;
-        border-radius: 22px;
-    }
-
-    .author-bar {
-        align-items: flex-start;
+        grid-template-columns: 88px minmax(0, 1fr);
         gap: 12px;
     }
 
-    .author-avatar {
-        width: 44px;
-        height: 44px;
+    .article-doodle {
+        width: 78px;
+        height: 62px;
     }
 
-    .author-name {
-        font-size: 16px;
-    }
-
-    .article-infolist {
-        gap: 10px 12px;
-        font-size: 12px;
-    }
-
-    .article-title {
-        margin-top: 14px;
-        font-size: 1.65rem;
-    }
-
-    :deep(.article-poster) {
-        height: 220px;
-        border-radius: 18px;
-    }
-
-    .article-summary {
-        font-size: 15px;
-    }
-}
-
-@media screen and (max-width: 480px) {
-    .article-card {
-        padding: 16px 14px 20px;
-        border-radius: 20px;
-
-        + .article-card {
-            margin-top: 20px;
-        }
-    }
-
-    .author-bar {
-        gap: 10px;
-    }
-
-    .author-avatar {
-        width: 40px;
-        height: 40px;
-    }
-
-    .author-row {
-        margin-bottom: 4px;
-    }
-
-    .author-name {
-        font-size: 15px;
-    }
-
-    .article-infolist {
-        gap: 8px 10px;
-    }
-
-    .article-title {
-        margin-top: 12px;
-        font-size: 1.45rem;
-        line-height: 1.28;
-    }
-
-    .article-card__body {
-        margin-top: 14px;
-    }
-
-    :deep(.article-poster) {
-        height: 180px;
-        border-radius: 16px;
-    }
-
-    .article-summary {
-        margin-top: 14px;
-        font-size: 14px;
-        line-height: 1.8;
-    }
-
+    .article-summary,
     .article-card__footer {
-        margin-top: 18px;
+        display: none;
     }
 
-    .read-more {
-        padding: 9px 12px;
+    .article-title {
+        font-size: 15px;
     }
 
-    .read-more-text {
-        font-size: 14px;
+    .article-card--featured {
+        display: block;
+    }
+
+    .article-card--featured .article-poster {
+        height: 190px;
+    }
+
+    .article-card--featured .article-card__header {
+        padding: 20px;
+    }
+
+    .article-card--featured .article-summary {
+        display: -webkit-box;
     }
 }
 </style>

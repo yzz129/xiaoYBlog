@@ -1,13 +1,11 @@
 <template>
     <base-layout>
         <section class="search-page">
-            <header class="search-head">
-                <div>
-                    <h1>搜索结果</h1>
-                    <p v-if="keyword">关键词：{{ keyword }}</p>
-                    <p v-else>请输入关键词搜索博客文章或用户。</p>
-                </div>
-            </header>
+            <PageHeading
+                title="搜索结果"
+                :description="keyword ? `正在查找：${keyword}` : '输入关键词，寻找文章或创作者。'"
+                icon="plane"
+            />
 
             <div class="search-switch">
                 <button
@@ -60,7 +58,7 @@
                         <div v-else-if="!userState.hasMore" class="loading-more loading-more--end">没有更多用户了</div>
                         <div ref="userSentinel" class="scroll-sentinel" />
                     </template>
-                    <a-empty v-else description="没有找到相关用户" />
+                    <IllustratedEmpty v-else title="没有找到相关用户" description="换一个关键词再试试吧。" />
                 </a-skeleton>
             </section>
 
@@ -75,7 +73,7 @@
                         <div v-else-if="!articleState.hasMore" class="loading-more loading-more--end">没有更多文章了</div>
                         <div ref="articleSentinel" class="scroll-sentinel" />
                     </template>
-                    <a-empty v-else description="没有找到相关文章" />
+                    <IllustratedEmpty v-else title="没有找到相关文章" description="换一个关键词再试试吧。" />
                 </a-skeleton>
             </section>
         </section>
@@ -88,6 +86,8 @@ import { useRoute, useRouter } from "vue-router";
 
 import type { ArticleDTO, UserDTO } from "@/bean/dto";
 import CardArticle from "@/components/card/card-article.vue";
+import IllustratedEmpty from "@/components/illustrated-empty.vue";
+import PageHeading from "@/components/page-heading.vue";
 import { articleService } from "@/services/article";
 import { userService } from "@/services/user";
 import { resolveAvatar } from "@/utils/avatar";
@@ -279,73 +279,53 @@ onBeforeUnmount(() => {
     padding: 8px 0 40px;
 }
 
-.search-head {
-    margin-bottom: 20px;
-    padding: 28px 32px;
-    background: linear-gradient(180deg, rgb(255 255 255 / 92%), rgb(255 255 255 / 84%));
-    border: 1px solid rgb(226 232 240 / 86%);
-    border-radius: 22px;
-    box-shadow: 0 24px 50px rgb(15 23 42 / 8%);
-
-    h1 {
-        margin: 0 0 8px;
-        color: #0f172a;
-        font-size: clamp(28px, 5vw, 40px);
-        font-weight: 800;
-    }
-
-    p {
-        margin: 0;
-        color: #64748b;
-        font-size: 15px;
-    }
-}
-
 .search-switch {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
+    display: flex;
+    gap: 0;
     margin-bottom: 20px;
+    border-bottom: 1px solid var(--xy-line);
 }
 
 .search-switch__btn {
-    height: 58px;
+    min-width: 150px;
+    height: 50px;
     border: none;
-    border-radius: 16px;
-    background: #fff;
-    color: #334155;
-    font-size: 18px;
+    border-radius: 0;
+    background: transparent;
+    color: var(--xy-text);
+    font-size: 16px;
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
-    box-shadow: 0 18px 44px rgb(15 23 42 / 8%);
+    box-shadow: none;
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 
     span {
         min-width: 28px;
         padding: 4px 8px;
-        border-radius: 999px;
-        background: #e2e8f0;
-        color: #475569;
+        border-radius: 5px;
+        background: var(--xy-blue-soft);
+        color: var(--xy-muted);
         font-size: 14px;
     }
 }
 
 .search-switch__btn:hover {
-    transform: translateY(-2px);
+    color: var(--xy-ink);
+    transform: none;
 }
 
 .search-switch__btn--active {
-    background: linear-gradient(135deg, #0f5fa8, #4cb2a7);
-    color: #fff;
-    box-shadow: 0 20px 46px rgb(15 95 168 / 22%);
+    color: var(--xy-ink);
+    background: var(--xy-mint-soft);
+    box-shadow: inset 0 -3px 0 var(--xy-mint);
 
     span {
-        background: rgb(255 255 255 / 18%);
-        color: #fff;
+        background: #fff;
+        color: var(--xy-text);
     }
 }
 
@@ -363,17 +343,20 @@ onBeforeUnmount(() => {
 .user-card {
     display: flex;
     gap: 18px;
-    padding: 22px 24px;
-    background: linear-gradient(180deg, rgb(255 255 255 / 95%), rgb(255 255 255 / 88%));
-    border: 1px solid rgb(226 232 240 / 72%);
-    border-radius: 20px;
-    box-shadow: 0 18px 44px rgb(15 23 42 / 8%);
+    padding: 20px 4px;
+    background: #fff;
+    border: 0;
+    border-bottom: 1px solid var(--xy-line);
+    border-radius: 0;
+    box-shadow: none;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .user-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 22px 52px rgb(15 23 42 / 12%);
+    padding-inline: 12px;
+    background: var(--xy-yellow-soft);
+    transform: none;
+    box-shadow: none;
 }
 
 .user-card__avatar {

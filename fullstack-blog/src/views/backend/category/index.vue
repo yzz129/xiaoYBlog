@@ -1,5 +1,14 @@
 <template>
     <section class="admin-page-wrapper">
+        <!-- 后台也使用同一套清新视觉语言，表格仍绑定真实分类接口。 -->
+        <div class="admin-page-heading">
+            <div>
+                <span class="admin-page-heading__eyebrow">CONTENT GARDEN</span>
+                <h1>分类花园</h1>
+                <p>整理文章的生长方向，让每篇内容都容易被找到。</p>
+            </div>
+            <DoodleIcon name="folder" :size="54" />
+        </div>
         <a-table
             row-key="id"
             :data-source="categoryList"
@@ -67,6 +76,7 @@ import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { CategoryDTO } from "@/bean/dto";
+import DoodleIcon from "@/components/doodle-icon.vue";
 import { useAsyncLoading } from "@/hooks/async";
 import { categoryService } from "@/services/category";
 import { format } from "@/utils/date-utils";

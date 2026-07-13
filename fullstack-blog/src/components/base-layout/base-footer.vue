@@ -6,8 +6,8 @@
                 <span>记录分享技术博客，聊天交流。</span>
             </div>
             <div class="footer-meta">
-                <span>Built with Vue 3 + Express</span>
-                <span>Mobile Ready</span>
+                <span>© 2026 小Y博客</span>
+                <span>保持好奇，持续创造与分享。</span>
             </div>
         </div>
     </footer>
@@ -17,10 +17,10 @@
 
 <style lang="scss" scoped>
 .base-footer__wrapper {
-    margin-top: 32px;
-    background: #0d1b28;
-    color: #d6dbe1;
-    border-top: 1px solid rgb(255 255 255 / 6%);
+    margin-top: 48px;
+    background: rgb(255 255 255 / 82%);
+    color: var(--ui-text);
+    border-top: 1px solid var(--ui-line);
 }
 
 .base-footer__inner {
@@ -39,13 +39,13 @@
     gap: 6px;
 
     strong {
-        color: #fff8d6;
+        color: var(--ui-primary-strong);
         font-size: 16px;
         font-weight: 800;
     }
 
     span {
-        color: #9fb0bf;
+        color: var(--ui-muted);
         font-size: 13px;
     }
 }
@@ -55,7 +55,7 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 12px;
-    color: #9fb0bf;
+    color: var(--ui-muted);
     font-size: 13px;
 }
 

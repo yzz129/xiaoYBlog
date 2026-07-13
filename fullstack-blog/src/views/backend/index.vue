@@ -11,12 +11,13 @@
             @collapse="onSiderCollapse"
         >
             <div class="sider-brand">
-                <img class="logo" src="@/assets/img/logo2.webp" alt="小Y博客" />
+                <span class="admin-brand__mascot" aria-hidden="true"><DoodleIcon name="mascot" /></span>
+                <span class="admin-brand__text"><strong>小Y博客</strong><small>管理后台</small></span>
             </div>
 
             <a-menu
                 v-model:openKeys="menuState.openKeys"
-                theme="dark"
+                theme="light"
                 mode="inline"
                 :selected-keys="selectedKeys"
                 @click="onClickMenu"
@@ -24,15 +25,20 @@
                 <a-sub-menu v-for="sub in navs" :key="sub.key">
                     <template #title>
                         <span>
-                            <component :is="sub.icon" />
+                            <DoodleIcon :name="backendIconFor(sub.key)" class="backend-nav-doodle" />
                             <span>{{ sub.title }}</span>
                         </span>
                     </template>
                     <a-menu-item v-for="child in sub.children" :key="child.key">
+                        <DoodleIcon :name="backendIconFor(child.key)" class="backend-nav-doodle" />
                         {{ child.title }}
                     </a-menu-item>
                 </a-sub-menu>
             </a-menu>
+
+            <div class="sider-doodle" aria-hidden="true">
+                <DoodleIcon name="cup" />
+            </div>
         </a-layout-sider>
 
         <a-layout class="backend-shell">
@@ -45,6 +51,7 @@
                     <button class="header-icon" type="button" aria-label="返回首页" @click="goHome">
                         <HomeOutlined />
                     </button>
+                    <strong class="backend-page-title">{{ currentPageTitle }}</strong>
                 </div>
 
                 <div class="header-actions">
@@ -99,6 +106,10 @@
             </a-layout-header>
 
             <a-layout-content class="right-main">
+                <header class="backend-content-heading">
+                    <h1>{{ currentPageTitle }}</h1>
+                    <DoodleIcon name="plane" />
+                </header>
                 <router-view />
             </a-layout-content>
         </a-layout>
@@ -117,6 +128,7 @@ import { format } from "@/utils/date-utils";
 import { tree2Arr } from "@/utils/tree";
 
 import { type NavItem, navs } from "./navs";
+import DoodleIcon from "@/components/doodle-icon.vue";
 
 interface MenuState {
     collapsed: boolean;
@@ -145,11 +157,22 @@ const menuState = reactive<MenuState>({
 const isDropdownVisible = ref(false);
 
 const selectedKeys = computed(() => [route.path]);
+const currentPageTitle = computed(() => flatNavs.find((item) => item.key === route.path)?.title || "管理后台");
 const userInfo = computed(() => store.userInfo);
 const displayName = computed(() => userInfo.value?.nick_name || userInfo.value?.user_name || "管理员");
 const userAvatar = computed(() => userInfo.value?.avatar || "");
 const avatarText = computed(() => displayName.value.slice(0, 1).toUpperCase());
 const userRoleLabel = computed(() => (userInfo.value?.role_name === "admin" ? "管理员" : "普通用户"));
+
+// 路由与现有导航结构不变，只把通用图标替换成概念图中的手绘笔触。
+const backendIconFor = (key: string) => {
+    if (key.includes("write")) return "pen" as const;
+    if (key.includes("category") || key === "sub4") return "folder" as const;
+    if (key.includes("tag") || key === "sub5") return "tag" as const;
+    if (key.includes("msg") || key === "sub2") return "message" as const;
+    if (key.includes("comment") || key === "sub3") return "message" as const;
+    return "article" as const;
+};
 
 watch(
     () => menuState.openKeys,
@@ -222,13 +245,14 @@ const formatUnreadTime = (value: string) => format(new Date(value), "MM-dd HH:mm
 .backend-layout {
     min-height: 100vh;
     background:
-        radial-gradient(circle at top right, rgb(76 178 167 / 12%), transparent 30%),
-        linear-gradient(180deg, #f5f8fc 0%, #eef3f8 100%);
+        radial-gradient(circle at top right, rgb(113 205 184 / 12%), transparent 30%),
+        linear-gradient(180deg, #f4faff 0%, #edf6fc 100%);
 }
 
 .backend-sider {
-    background: rgb(4, 16, 31);
-    box-shadow: 10px 0 28px rgb(15 23 42 / 12%);
+    background: #fff;
+    border-right: 1px solid var(--ui-line);
+    box-shadow: 8px 0 28px rgb(63 111 151 / 8%);
 
     :deep(.ant-layout-sider-children) {
         display: flex;
@@ -236,7 +260,8 @@ const formatUnreadTime = (value: string) => format(new Date(value), "MM-dd HH:mm
     }
 
     :deep(.ant-menu-dark) {
-        background: rgb(4, 16, 31);
+        color: var(--ui-text);
+        background: #fff;
     }
 
     :deep(.ant-menu-inline .ant-menu-item),
@@ -247,15 +272,27 @@ const formatUnreadTime = (value: string) => format(new Date(value), "MM-dd HH:mm
     }
 
     :deep(.ant-menu-dark .ant-menu-item-selected) {
-        background: linear-gradient(135deg, #2c74bb, #5cc7c4);
-        box-shadow: 0 14px 28px rgb(22 83 132 / 24%);
+        color: var(--ui-primary-strong);
+        background: var(--ui-primary-soft);
+        box-shadow: none;
+    }
+
+    :deep(.ant-menu-dark .ant-menu-submenu-title),
+    :deep(.ant-menu-dark .ant-menu-item) {
+        color: var(--ui-text);
+    }
+
+    :deep(.ant-menu-dark .ant-menu-submenu-title:hover),
+    :deep(.ant-menu-dark .ant-menu-item:hover) {
+        color: var(--ui-primary-strong);
+        background: #f3f9fe;
     }
 }
 
 .sider-brand {
     padding: 18px 16px 12px;
-    background: rgb(4, 16, 31);
-    border-bottom: 1px solid rgba(174, 223, 245, 0.08);
+    background: #fff;
+    border-bottom: 1px solid var(--ui-line);
 }
 
 .logo {
@@ -282,10 +319,10 @@ const formatUnreadTime = (value: string) => format(new Date(value), "MM-dd HH:mm
     justify-content: space-between;
     height: 72px;
     padding: 0 18px;
-    background: linear-gradient(180deg, rgb(248 252 255 / 94%), rgb(233 244 252 / 92%));
+    background: rgb(255 255 255 / 92%);
     backdrop-filter: blur(14px);
-    border-bottom: 1px solid rgb(188 222 243 / 88%);
-    box-shadow: 0 10px 26px rgb(102 157 196 / 12%);
+    border-bottom: 1px solid var(--ui-line);
+    box-shadow: 0 10px 26px rgb(63 111 151 / 8%);
 }
 
 .header-left,

@@ -1,5 +1,14 @@
 <template>
     <section class="profile-page admin-page-wrapper">
+        <!-- 资料页采用开放式工作台布局，表单字段和保存流程保持不变。 -->
+        <div class="admin-page-heading">
+            <div>
+                <span class="admin-page-heading__eyebrow">MY LITTLE CORNER</span>
+                <h1>我的资料角</h1>
+                <p>整理头像、昵称与账号安全，给个人空间添一点自己的颜色。</p>
+            </div>
+            <DoodleIcon name="user" :size="54" />
+        </div>
         <a-row :gutter="24">
             <a-col :xs="24" :lg="10">
                 <a-card title="头像与资料" :bordered="false">
@@ -91,6 +100,7 @@ import Hashes from "jshashes";
 import { computed, onMounted, reactive, ref } from "vue";
 import { message } from "ant-design-vue";
 import { UploadOutlined } from "@ant-design/icons-vue";
+import DoodleIcon from "@/components/doodle-icon.vue";
 
 import { useAsyncLoading } from "@/hooks/async";
 import { uploadService } from "@/services/upload";

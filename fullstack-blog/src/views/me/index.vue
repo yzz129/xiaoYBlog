@@ -3,6 +3,8 @@
         <template #default>
             <a-skeleton :loading="loadingPage" active avatar :paragraph="{ rows: 8 }">
                 <section v-if="currentUser && profile" class="me-profile">
+                    <!-- 将个人空间做成轻量手账封面，所有内容仍来自当前账号。 -->
+                    <DoodleIcon class="profile-doodle" name="mascot" :size="42" />
                     <img class="me-avatar" :src="userAvatar" :alt="displayName" />
 
                     <div class="me-main">
@@ -153,6 +155,7 @@ import { useRouter } from "vue-router";
 
 import { ArticleDTO, UserDTO } from "@/bean/dto";
 import CardArticle from "@/components/card/card-article.vue";
+import DoodleIcon from "@/components/doodle-icon.vue";
 import { useAsyncLoading } from "@/hooks/async";
 import { articleService } from "@/services/article";
 import { userService } from "@/services/user";

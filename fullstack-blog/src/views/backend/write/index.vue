@@ -1,5 +1,14 @@
 ﻿<template>
     <section class="workspace__wrapper">
+        <!-- 创作区保留完整发布和 AI 流程，只重构信息层级与视觉节奏。 -->
+        <div class="admin-page-heading admin-page-heading--write">
+            <div>
+                <span class="admin-page-heading__eyebrow">IDEA WORKBENCH</span>
+                <h1>{{ isEdit ? "继续打磨这篇文章" : "写下今天的新发现" }}</h1>
+                <p>从一个念头开始，在左边落笔，在右边预览它最终的样子。</p>
+            </div>
+            <DoodleIcon name="pen" :size="58" />
+        </div>
         <a-spin :spinning="initLoading">
             <a-form class="form-write" ref="formRef" :model="formModel" :rules="rules" :wrapper-col="{ span: 24 }">
                 <a-form-item label="AI 创作">
@@ -256,6 +265,7 @@
 </template>
 
 <script setup lang="ts">
+import DoodleIcon from "@/components/doodle-icon.vue";
 
 
 

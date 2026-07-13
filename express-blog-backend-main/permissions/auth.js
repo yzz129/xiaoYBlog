@@ -37,12 +37,12 @@ authMap.set("/reply/add", { role: "user" });
 authMap.set("/comment/total", { role: "user" });
 authMap.set("/comment/number_of_people", { role: "user" });
 
-authMap.set("/category/all", { role: "user" });
+// 分类总览用于前台公开浏览，不应要求登录。
 authMap.set("/category/my", { role: "user" });
 authMap.set("/category/admin/page", { role: "user" });
 authMap.set("/category/admin/update", { role: "user" });
 
-authMap.set("/tag/all", { role: "user" });
+// 标签总览用于前台公开浏览，不应要求登录。
 authMap.set("/tag/my", { role: "user" });
 authMap.set("/tag/admin/page", { role: "user" });
 

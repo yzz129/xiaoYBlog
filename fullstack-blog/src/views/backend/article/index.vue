@@ -1,8 +1,14 @@
 <template>
     <section class="admin-page-wrapper">
+        <div class="article-toolbar">
+            <a-input v-model:value="searchKeyword" allow-clear placeholder="搜索当前文章" class="article-toolbar__search" />
+            <a-select v-model:value="categoryFilter" :options="categoryOptions" class="article-toolbar__select" />
+            <a-select v-model:value="statusFilter" :options="statusOptions" class="article-toolbar__select" />
+            <a-button type="primary" @click="router.push('/backend/write')">新建文章</a-button>
+        </div>
         <a-table
             row-key="id"
-            :data-source="articleList"
+            :data-source="filteredArticles"
             :columns="columns"
             :loading="loading"
             :scroll="{ x: 1500 }"
@@ -59,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { message, Modal } from "ant-design-vue";
 import type { TablePaginationConfig } from "ant-design-vue";
 import { useRouter } from "vue-router";
@@ -82,6 +88,38 @@ type ArticleTableColumn = {
 const router = useRouter();
 const articleList = ref<ArticleDTO[]>([]);
 const activeIndex = ref(-1);
+const searchKeyword = ref("");
+const categoryFilter = ref("all");
+const statusFilter = ref("all");
+
+const statusOptions = [
+    { label: "全部状态", value: "all" },
+    { label: "公开", value: "public" },
+    { label: "私密", value: "private" },
+    { label: "已删除", value: "deleted" },
+];
+
+// 分类选项和筛选结果均从接口返回的文章中推导，不维护静态业务数据。
+const categoryOptions = computed(() => {
+    const names = new Set<string>();
+    articleList.value.forEach((article) => article.categories?.forEach((category) => names.add(category.categoryName)));
+    return [{ label: "全部分类", value: "all" }, ...Array.from(names).map((name) => ({ label: name, value: name }))];
+});
+
+const filteredArticles = computed(() => {
+    const keyword = searchKeyword.value.trim().toLowerCase();
+    return articleList.value.filter((article) => {
+        const matchesKeyword = !keyword || article.article_name.toLowerCase().includes(keyword);
+        const matchesCategory =
+            categoryFilter.value === "all" || article.categories?.some((category) => category.categoryName === categoryFilter.value);
+        const matchesStatus =
+            statusFilter.value === "all" ||
+            (statusFilter.value === "public" && article.private !== 1 && article.deleted !== 1) ||
+            (statusFilter.value === "private" && article.private === 1) ||
+            (statusFilter.value === "deleted" && article.deleted === 1);
+        return matchesKeyword && matchesCategory && matchesStatus;
+    });
+});
 
 const pagination = reactive<TablePaginationConfig>({
     current: 1,
@@ -207,3 +245,27 @@ const columns = ref<ArticleTableColumn[]>([
     },
 ]);
 </script>
+
+<style scoped>
+.article-toolbar {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 150px 150px auto;
+    gap: 14px;
+    margin-bottom: 22px;
+}
+
+.article-toolbar__search,
+.article-toolbar__select {
+    width: 100%;
+}
+
+@media (max-width: 800px) {
+    .article-toolbar {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .article-toolbar__search {
+        grid-column: 1 / -1;
+    }
+}
+</style>

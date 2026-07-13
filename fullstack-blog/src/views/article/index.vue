@@ -3,6 +3,11 @@
         <template #default>
             <a-skeleton :loading="loading" active avatar :paragraph="{ rows: 18 }">
                 <article v-if="article" class="article-page">
+                    <PageHeading
+                        :title="article.article_name"
+                        :description="`发布于 ${formattedTime} · 阅读 ${article.read_num}`"
+                        icon="article"
+                    />
                     <header class="article-header">
                         <router-link v-if="authorRoute" :to="authorRoute" class="author-link">
                             <img class="avatar" :src="authorAvatar" :alt="article.author" width="56" height="56" />
@@ -26,7 +31,6 @@
 
                     <main class="article-main">
                         <el-image :src="article.poster" class="article-poster" fit="cover" />
-                        <h1 class="article-title">{{ article.article_name }}</h1>
                         <section class="md-preview" v-html="purifiedContent"></section>
                     </main>
 
@@ -64,7 +68,7 @@
                     </div>
                 </article>
 
-                <a-empty v-else description="文章不存在或当前不可见" />
+                <IllustratedEmpty v-else title="文章不存在或当前不可见" description="返回首页看看其他文章吧。" />
             </a-skeleton>
 
             <div class="pre-next-wrap">
@@ -127,6 +131,8 @@ import { format } from "@/utils/date-utils";
 import { setScrollTop } from "@/utils/dom";
 
 import Comments from "./comments.vue";
+import IllustratedEmpty from "@/components/illustrated-empty.vue";
+import PageHeading from "@/components/page-heading.vue";
 
 const store = useStore();
 const route = useRoute();

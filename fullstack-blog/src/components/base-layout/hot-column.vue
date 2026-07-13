@@ -1,91 +1,143 @@
 <template>
-    <a-card class="card-hot" hoverable :loading="loading">
-        <template #title>
-            <div class="clearfix">
-                <span>热门推荐</span>
+    <section class="card-hot" :aria-busy="loading">
+        <header class="hot-heading">
+            <span class="hot-flame" aria-hidden="true">♨</span>
+            <h2>热门推荐</h2>
+            <span class="hot-star" aria-hidden="true">☆</span>
+        </header>
+
+        <a-skeleton :loading="loading" active :paragraph="{ rows: 6 }">
+            <ol v-if="hotList.length > 0" class="hot-list">
+                <li v-for="(article, index) in hotList" :key="article.id">
+                    <router-link :to="`/article/${article.id}`">
+                        <span class="hot-rank">{{ String(index + 1).padStart(2, "0") }}</span>
+                        <span class="hot-title" :title="article.article_name">{{ article.article_name }}</span>
+                    </router-link>
+                </li>
+            </ol>
+
+            <div v-else class="hot-empty">
+                <img :src="EmptyMascot" alt="暂无热门文章" />
+                <span>暂无热门文章</span>
             </div>
-        </template>
-
-        <ul class="hot-list" v-if="hotList.length > 0">
-            <li v-for="article in hotList" :key="article.id" class="clearfix">
-                <router-link :to="`/article/${article.id}`">
-                    <el-image class="poster" :src="article.poster" fit="cover" lazy />
-                    <div class="text-wrapper">
-                        <h3 class="ellipsis" :title="article.article_name">
-                            {{ article.article_name }}
-                        </h3>
-                        <span>阅读&nbsp;{{ article.read_num }}</span>
-                    </div>
-                </router-link>
-            </li>
-        </ul>
-
-        <a-empty v-else />
-    </a-card>
+        </a-skeleton>
+    </section>
 </template>
 
 <script setup lang="ts">
 import { ref } from "vue";
 
-import { Card } from "ant-design-vue";
-
-import { ArticleDTO } from "@/bean/dto";
-
-import { articleService } from "@/services/article";
-
+import type { ArticleDTO } from "@/bean/dto";
+import EmptyMascot from "@/assets/illustrations/empty-mascot.webp";
 import { useAsyncLoading } from "@/hooks/async";
+import { articleService } from "@/services/article";
 
 const hotList = ref<ArticleDTO[]>([]);
 
 const handleGetHotList = async () => {
-            const res = await articleService.topRead({
-                count: 6,
-            });
-            hotList.value = res.data;
-        };
+    const res = await articleService.topRead({ count: 8 });
+    hotList.value = res.data || [];
+};
 
 const { trigger: getHotList, loading } = useAsyncLoading(handleGetHotList);
-
 getHotList();
 </script>
 
 <style lang="scss" scoped>
 .card-hot {
-    margin: 36px 24px;
-    box-shadow: 0 2px 12px 0 rgb(0 0 0 / 10%);
-    :deep(.ant-card-head-title) {
-        padding: 12px 0;
-    }
-}
-.hot-list {
-    > li + li {
-        margin-top: 10px;
-    }
-}
-:deep(.poster) {
-    float: left;
-    width: 60px;
-    height: 60px;
-}
-.text-wrapper {
-    margin-left: 70px;
-    > h3 {
-        margin: 0 0 10px 0;
-        font-size: 14px;
-        color: #333;
-        font-weight: 700;
-    }
-    > span {
-        font-size: 10px;
-        color: #666;
-    }
+    min-width: 0;
 }
 
-@media screen and (min-width: 992px) {
-    .card-hot {
-        width: 800px;
-        // 处理 deep 优先问题
-        margin: 36px auto !important;
-    }
+.hot-heading {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 0 13px;
+    border-bottom: 1px solid var(--xy-line);
+}
+
+.hot-heading h2 {
+    margin: 0;
+    color: var(--xy-ink);
+    font-size: 18px;
+    font-weight: 950;
+    text-decoration: underline wavy var(--xy-coral) 2px;
+    text-underline-offset: 8px;
+}
+
+.hot-flame {
+    color: var(--xy-coral);
+    font-size: 23px;
+}
+
+.hot-star {
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    color: var(--xy-ink);
+    font-size: 28px;
+    transform: rotate(12deg);
+}
+
+.hot-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.hot-list li {
+    border-bottom: 1px solid var(--xy-line);
+}
+
+.hot-list a {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 13px 0;
+}
+
+.hot-rank {
+    color: var(--xy-muted);
+    font-size: 14px;
+    font-weight: 900;
+}
+
+.hot-list li:nth-child(1) .hot-rank {
+    color: var(--xy-coral);
+}
+
+.hot-list li:nth-child(2) .hot-rank {
+    color: #e4a900;
+}
+
+.hot-title {
+    overflow: hidden;
+    color: var(--xy-ink);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hot-list a:hover .hot-title {
+    color: #169c75;
+}
+
+.hot-empty {
+    min-height: 280px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 4px;
+    margin-top: 34px;
+    border: 1px dashed var(--xy-line);
+    border-radius: 12px;
+    color: var(--xy-muted);
+    font-size: 12px;
+}
+
+.hot-empty img {
+    width: 150px;
 }
 </style>

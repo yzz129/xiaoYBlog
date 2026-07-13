@@ -1,12 +1,6 @@
 <template>
     <base-layout>
-        <a-breadcrumb>
-            <a-breadcrumb-item><router-link to="/">首页</router-link></a-breadcrumb-item>
-            <a-breadcrumb-item><router-link to="/categories">所有分类</router-link></a-breadcrumb-item>
-            <a-breadcrumb-item>{{ $route.params.name }}</a-breadcrumb-item>
-        </a-breadcrumb>
-
-        <a-divider />
+        <PageHeading :title="String($route.params.name || '文章分类')" description="这个分类下的全部公开文章。" icon="folder" />
 
         <a-skeleton :loading="loading" active :paragraph="{ rows: 12 }">
             <template v-if="articleList.length > 0">
@@ -26,7 +20,7 @@
             </template>
 
             <template v-else>
-                <a-empty />
+                <IllustratedEmpty title="这个分类暂时没有文章" description="新文章发布后会自动出现在这里。" />
             </template>
         </a-skeleton>
     </base-layout>
@@ -46,6 +40,8 @@ import { articleService } from "@/services/article";
 import { useAsyncLoading } from "@/hooks/async";
 
 import CardArticle from "@/components/card/card-article.vue";
+import IllustratedEmpty from "@/components/illustrated-empty.vue";
+import PageHeading from "@/components/page-heading.vue";
 
 import { setScrollTop } from "@/utils/dom";
 

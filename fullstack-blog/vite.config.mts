@@ -3,6 +3,8 @@ import vue from "@vitejs/plugin-vue";
 import path from "path";
 import viteCompression from "vite-plugin-compression";
 
+const backendTarget = process.env.VITE_BACKEND_SERVER || "http://localhost:8002";
+
 export default defineConfig({
     base: "/",
     plugins: [
@@ -25,12 +27,12 @@ export default defineConfig({
         open: true,
         proxy: {
             "/api": {
-                target: "http://localhost:8002",
+                target: backendTarget,
                 changeOrigin: true,
                 rewrite: (requestPath) => requestPath.replace(/^\/api/, ""),
             },
             "/socket.io": {
-                target: "http://localhost:8002",
+                target: backendTarget,
                 changeOrigin: true,
                 ws: true,
             },

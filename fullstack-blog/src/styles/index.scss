@@ -1,10 +1,36 @@
-// global styles
-
 @use "./reset.scss";
 @use "./animation.scss";
 @use "./atom.scss";
 @use "./common.scss";
 @use "./antd.scss";
+@use "./page-refresh.scss";
+
+/*
+ * 小Y博客 · 轻量手帐设计系统
+ * 只保留少量高辨识度颜色和紧凑尺寸，避免视觉元素越叠越重。
+ */
+:root {
+    --xy-font-body: "Nunito Variable", "LXGW WenKai", "YouYuan", "幼圆", "Microsoft YaHei UI", sans-serif;
+    --xy-font-display: "LXGW WenKai", "YouYuan", "幼圆", "Nunito Variable", sans-serif;
+    --xy-font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --xy-white: #ffffff;
+    --xy-paper: #fbfdfc;
+    --xy-ink: #16324f;
+    --xy-text: #536b80;
+    --xy-muted: #91a2b1;
+    --xy-line: #dce7ee;
+    --xy-mint: #79ddbd;
+    --xy-mint-soft: #e8f8f2;
+    --xy-yellow: #ffd968;
+    --xy-yellow-soft: #fff8dc;
+    --xy-coral: #ff806d;
+    --xy-coral-soft: #fff0ed;
+    --xy-blue: #57a9e8;
+    --xy-blue-soft: #edf7ff;
+    --xy-radius: 10px;
+    --xy-shadow: 0 12px 36px rgb(22 50 79 / 7%);
+    --xy-ease: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 
 html,
 body,
@@ -13,10 +39,91 @@ body,
 }
 
 body {
-    color: #0f172a;
-    background: #eef3f9;
+    margin: 0;
+    color: var(--xy-ink);
+    background: var(--xy-white);
+    font-family: var(--xy-font-body);
+    font-weight: 500;
+    line-height: 1.68;
+    letter-spacing: 0.012em;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizelegibility;
+}
+
+/*
+ * 全站字体层级：正文轻松圆润，标题带一点手写感。
+ * 代码与 Markdown 代码块保留等宽字体，避免符号和缩进难以辨认。
+ */
+button,
+input,
+textarea,
+select,
+.ant-app,
+.ant-modal-root,
+.ant-drawer-root,
+.ant-dropdown,
+.ant-message,
+.ant-notification {
+    font-family: var(--xy-font-body) !important;
+}
+
+#app :where(
+        .ant-btn,
+        .ant-input,
+        .ant-input-affix-wrapper,
+        .ant-select,
+        .ant-picker,
+        .ant-table,
+        .ant-form,
+        .ant-menu,
+        .ant-tabs,
+        .ant-pagination,
+        .ant-tag,
+        .ant-dropdown-menu,
+        .el-button,
+        .el-input,
+        .el-select
+    ),
+:where(.ant-modal, .ant-drawer, .ant-message, .ant-notification, .ant-dropdown) {
+    font-family: var(--xy-font-body) !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.page-heading,
+.home-masthead,
+.admin-page-heading,
+.backend-content-heading,
+.ant-card-head-title,
+.ant-modal-title,
+.ant-drawer-title {
+    font-family: var(--xy-font-display);
+    letter-spacing: 0.035em;
+}
+
+p,
+li,
+td,
+th,
+label,
+.ant-form-item-label,
+.ant-empty-description {
+    letter-spacing: 0.016em;
+}
+
+code,
+pre,
+kbd,
+samp,
+.md-textarea,
+.md-preview code,
+.outline-stream-content {
+    font-family: var(--xy-font-code) !important;
+    letter-spacing: 0;
 }
 
 a {
@@ -26,4 +133,141 @@ a {
 
 img {
     max-width: 100%;
+}
+
+::selection {
+    color: var(--xy-ink);
+    background: var(--xy-yellow);
+}
+
+:focus-visible {
+    outline: 3px solid rgb(87 169 232 / 24%);
+    outline-offset: 2px;
+}
+
+/* 第三方组件统一为轻边框、紧凑控件；不使用厚阴影和大胶囊。 */
+#app {
+    .ant-btn,
+    .ant-input,
+    .ant-input-affix-wrapper,
+    .ant-select-selector,
+    .ant-picker,
+    .el-input__wrapper,
+    .el-select__wrapper {
+        border-radius: 8px !important;
+        font-family: inherit;
+        font-weight: 650;
+        letter-spacing: 0.025em;
+        box-shadow: none;
+        transition: border-color var(--xy-ease), background var(--xy-ease), transform var(--xy-ease);
+    }
+
+    .ant-btn-primary {
+        color: var(--xy-ink);
+        border-color: #41c79c;
+        background: var(--xy-mint);
+        box-shadow: 3px 3px 0 var(--xy-ink);
+    }
+
+    .ant-btn-primary:hover {
+        color: var(--xy-ink);
+        border-color: var(--xy-ink);
+        background: #8ce5c8;
+        transform: translate(-1px, -1px);
+    }
+
+    .ant-card,
+    .ant-modal-content,
+    .ant-drawer-content,
+    .el-card {
+        border: 1px solid var(--xy-line);
+        border-radius: var(--xy-radius);
+        box-shadow: none;
+    }
+
+    .ant-table-wrapper .ant-table,
+    .ant-table-wrapper .ant-table-container {
+        border-radius: 0;
+    }
+
+    .ant-table-wrapper .ant-table-thead > tr > th {
+        color: var(--xy-ink);
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        background: transparent;
+        border-block: 1px solid var(--xy-line);
+    }
+
+    .ant-table-wrapper .ant-table-tbody > tr > td {
+        color: var(--xy-text);
+        background: transparent;
+        border-bottom-color: var(--xy-line);
+        letter-spacing: 0.018em;
+    }
+
+    .ant-table-wrapper .ant-table-tbody > tr:hover > td {
+        background: var(--xy-blue-soft);
+    }
+
+    .ant-pagination .ant-pagination-item,
+    .ant-pagination .ant-pagination-prev,
+    .ant-pagination .ant-pagination-next {
+        border-radius: 6px;
+    }
+
+    .ant-pagination .ant-pagination-item-active {
+        border-color: #42c99e;
+        background: var(--xy-mint);
+    }
+
+    .ant-pagination .ant-pagination-item-active a {
+        color: var(--xy-ink);
+    }
+
+    .ant-tag {
+        border: 0;
+        border-radius: 6px;
+        padding-inline: 8px;
+    }
+
+    .ant-empty {
+        padding: 28px 12px;
+        color: var(--xy-muted);
+    }
+}
+
+/* 消除旧样式中过紧的负字距，让手写字体在各级标题中自然舒展。 */
+#app :where(h1, h2, h3, h4, .article-title, .backend-page-title, .admin-page-heading h1, .page-heading h1) {
+    letter-spacing: 0.025em;
+}
+
+#app :where(.site-nav, .menu__item, .header-pill, .ant-btn, .ant-tabs-tab, .ant-tag) {
+    letter-spacing: 0.03em;
+}
+
+#app :where(.article-summary, .article-meta, .user-meta, .footer-meta, .page-heading p) {
+    letter-spacing: 0.015em;
+}
+
+@media (max-width: 768px) {
+    #app .ant-table-wrapper {
+        overflow-x: auto;
+    }
+
+    #app .ant-modal {
+        width: calc(100vw - 20px) !important;
+        max-width: none;
+        margin: 10px auto;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }

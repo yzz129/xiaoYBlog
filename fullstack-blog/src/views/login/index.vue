@@ -2,6 +2,7 @@
     <base-layout>
         <section class="login-page">
             <div class="login-card">
+                <DoodleIcon name="mascot" class="login-mascot" />
                 <h2 class="login-title">{{ isLogin ? "登录后台" : "注册账号" }}</h2>
                 <p class="login-subtitle">
                     {{ isLogin ? "使用账号密码进入管理后台" : "创建一个新的账号以发布和管理内容" }}
@@ -107,6 +108,7 @@ import { useAsyncLoading } from "@/hooks/async";
 import { validatorService } from "@/services/validator";
 import { useStore } from "@/stores";
 import { REQUIRED_VALIDATOR_BLUR } from "@/utils/validator";
+import DoodleIcon from "@/components/doodle-icon.vue";
 
 const store = useStore();
 const router = useRouter();

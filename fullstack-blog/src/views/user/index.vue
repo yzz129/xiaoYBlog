@@ -3,6 +3,8 @@
         <template #default>
             <a-skeleton :loading="loadingProfile" active avatar :paragraph="{ rows: 6 }">
                 <section v-if="profile" class="user-profile">
+                    <!-- 彩绘小图标只负责视觉引导，不参与用户数据逻辑。 -->
+                    <DoodleIcon class="profile-doodle" name="user" :size="42" />
                     <img class="user-avatar" :src="userAvatar" :alt="profile.nick_name || profile.user_name" />
 
                     <div class="user-main">
@@ -98,6 +100,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import { ArticleDTO, UserDTO } from "@/bean/dto";
 import CardArticle from "@/components/card/card-article.vue";
+import DoodleIcon from "@/components/doodle-icon.vue";
 import { useAsyncLoading } from "@/hooks/async";
 import { articleService } from "@/services/article";
 import { userService } from "@/services/user";

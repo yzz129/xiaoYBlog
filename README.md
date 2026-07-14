@@ -1,4 +1,8 @@
 # 小Y博客面试项目
+<img width="2547" height="1915" alt="image" src="https://github.com/user-attachments/assets/bcb5f3c0-be90-4670-a36d-20d09a5a0dd7" />
+<img width="2733" height="1911" alt="image" src="https://github.com/user-attachments/assets/a3ee99c5-5cd3-4082-bcdd-31b2e2f5b1f8" />
+<img width="2735" height="1911" alt="image" src="https://github.com/user-attachments/assets/087a1813-1f1c-4ba8-ac44-79b138627d09" />
+<img width="2724" height="1920" alt="image" src="https://github.com/user-attachments/assets/59609ed1-90c4-4c41-ac35-f39cccdd414a" />
 
 这是一个可直接用于前端面试展示的全栈博客项目，包含：
 

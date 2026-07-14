@@ -220,7 +220,7 @@ const authorRoute = computed(() => (props.article.author_user_id ? `/user/${prop
     padding: 6px 10px;
     color: var(--xy-ink);
     background: var(--xy-yellow);
-    font-family: "Comic Sans MS", cursive;
+    font-family: var(--xy-font-display);
     font-size: 12px;
     transform: rotate(-4deg);
 }

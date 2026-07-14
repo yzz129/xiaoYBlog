@@ -5,13 +5,29 @@
 @use "./antd.scss";
 @use "./page-refresh.scss";
 
+@font-face {
+    font-family: "XY Rounded";
+    src: url("../assets/fonts/hanyituantuanyuanyuan.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "XY Doodle";
+    src: url("../assets/fonts/gongfansuannaibudingti.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
 /*
  * 小Y博客 · 轻量手帐设计系统
- * 只保留少量高辨识度颜色和紧凑尺寸，避免视觉元素越叠越重。
+ * 正文使用圆润字形，标题保留轻盈可爱的手写感。
  */
 :root {
-    --xy-font-body: "Nunito Variable", "LXGW WenKai", "YouYuan", "幼圆", "Microsoft YaHei UI", sans-serif;
-    --xy-font-display: "LXGW WenKai", "YouYuan", "幼圆", "Nunito Variable", sans-serif;
+    --xy-font-body: "XY Rounded", "YouYuan", "幼圆", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+    --xy-font-display: "XY Doodle", "XY Rounded", "YouYuan", "幼圆", sans-serif;
     --xy-font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     --xy-white: #ffffff;
     --xy-paper: #fbfdfc;

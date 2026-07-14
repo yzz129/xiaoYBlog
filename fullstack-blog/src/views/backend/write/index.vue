@@ -1156,7 +1156,7 @@ const resetAgent = async () => {
 }
 
 .section-editor {
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-family: var(--xy-font-code);
     font-size: 14px;
 }
 
@@ -1196,7 +1196,7 @@ const resetAgent = async () => {
     word-break: break-word;
     max-height: 260px;
     overflow: auto;
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--xy-font-code);
     font-size: 13px;
     line-height: 1.6;
 }

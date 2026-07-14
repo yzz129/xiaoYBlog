@@ -26,7 +26,7 @@
             <path d="M16 44h34c7 0 10-9 4-13 2-9-11-14-17-7-4-10-20-7-20 4-11-1-13 16-1 16Z" fill="#fff" />
             <path d="M16 44h34c7 0 10-9 4-13 2-9-11-14-17-7-4-10-20-7-20 4-11-1-13 16-1 16Z" />
             <path d="M22 49v6m20-6v6M32 44v11M18 55h8m12 0h8" />
-            <text x="22" y="38" fill="currentColor" stroke="none" font-size="12" font-family="sans-serif">API</text>
+            <text x="22" y="38" fill="currentColor" stroke="none" font-size="12" font-family="XY Rounded, sans-serif">API</text>
         </g>
 
         <g v-else-if="name === 'note'">

@@ -3,10 +3,6 @@
  * @description: 入口文件
  */
 import "./styles/index.scss";
-// 中文使用清爽手写体，英文与数字使用圆润字体；字体随应用本地打包，不依赖外部 CDN。
-import "lxgw-wenkai-webfont/lxgwwenkai-regular.css";
-import "lxgw-wenkai-webfont/lxgwwenkai-bold.css";
-import "@fontsource-variable/nunito/index.css";
 import { createApp } from "vue";
 import App from "./App.vue";
 import router from "./router";

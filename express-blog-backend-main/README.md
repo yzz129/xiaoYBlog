@@ -92,3 +92,52 @@ npm run test:comment-reply
 - 私聊未读提醒从轮询升级为实时推送
 - AI 写作支持流式大纲、流式章节、Redis 会话恢复
 - MinIO 用于头像和封面存储
+## 小Y Agent 宠物助手
+
+登录后，所有页面右下角都会出现小Y宠物。点击后可以用自然语言创建长任务，也可以指定执行时间。任务由后端持续执行，关闭抽屉或刷新页面不会丢失进度。
+
+当前内置工具包括：
+
+- 搜索、读取站内博客，识别文章作者
+- 搜索和关注站内用户
+- 通过 Tavily 搜索公开网页
+- 根据收集资料撰写原创 Markdown 草稿
+- 发布草稿或覆盖更新已有文章
+
+Agent 不是固定工作流。运行时会反复读取任务目标和真实工具结果，由模型选择下一步工具；没有模型密钥时会启用一个只覆盖常见站内搜索、关注、写作和发布任务的有限本地降级策略。
+
+### 配置
+
+在后端环境文件中至少配置一个模型提供方：
+
+```env
+# 推荐：OpenAI Responses API
+OPENAI_API_KEY=
+OPENAI_AGENT_MODEL=gpt-5-mini
+
+# 或使用现有的 DeepSeek OpenAI-compatible 接口
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_MODEL=deepseek-chat
+
+# 只有公开网页搜索需要
+TAVILY_API_KEY=
+```
+
+MySQL 启动后，服务会自动创建 `agent_task` 与 `agent_task_event` 两张表。生产数据库账号需要拥有首次建表权限；也可以先启动一次服务完成建表，再收紧权限。
+
+### 状态与安全边界
+
+任务状态包含 `scheduled`、`queued`、`running`、`waiting_input`、`waiting_approval`、`paused`、`completed`、`failed` 和 `cancelled`。调度器每 5 秒领取到期任务；运行中任务的计划、观察结果、草稿和事件时间线都会持久化。
+
+搜索、读取和关注会直接执行并写入审计事件。发布文章和覆盖更新属于高影响动作，运行时会强制停在 `waiting_approval`，只有当前任务所有者批准后才会执行。审批动作会先被原子认领，避免重复点击导致重复发布。
+
+主要接口位于 `/pet-agent`：
+
+- `POST /tasks`：创建立即或定时任务
+- `GET /tasks`、`GET /tasks/:id`：任务列表与事件详情
+- `POST /tasks/:id/messages`：补充要求并继续规划
+- `POST /tasks/:id/approval`：批准或拒绝待确认动作
+- `POST /tasks/:id/pause|resume|cancel`：控制长任务
+
+前端开发环境可使用 `/login?agentPreview=1` 查看隔离的 UI 预览状态。该入口只在 Vite 开发模式生效，不会绕过生产鉴权，也不会调用真实 Agent API。

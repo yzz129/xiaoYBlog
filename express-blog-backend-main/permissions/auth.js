@@ -59,4 +59,12 @@ authMap.set("/agent/feedback", { role: "user" });
 authMap.set("/agent/reset", { role: "user" });
 authMap.set("/agent/stream-section/:sessionId/:sectionIndex", { role: "user" });
 
+authMap.set("/pet-agent/tasks", { role: "user" });
+authMap.set("/pet-agent/tasks/:id", { role: "user" });
+authMap.set("/pet-agent/tasks/:id/messages", { role: "user" });
+authMap.set("/pet-agent/tasks/:id/approval", { role: "user" });
+authMap.set("/pet-agent/tasks/:id/pause", { role: "user" });
+authMap.set("/pet-agent/tasks/:id/resume", { role: "user" });
+authMap.set("/pet-agent/tasks/:id/cancel", { role: "user" });
+
 module.exports = authMap;

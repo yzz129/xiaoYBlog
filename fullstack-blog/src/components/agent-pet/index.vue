@@ -62,7 +62,12 @@
                         <section class="conversation-block">
                             <div class="user-message">
                                 <span>你</span>
-                                <p>{{ activeTask.goal }}</p>
+                                <div>
+                                    <p>{{ activeTask.goal }}</p>
+                                    <div v-if="activeTask.context?.attachments?.length" class="message-images">
+                                        <img v-for="image in activeTask.context.attachments" :key="image.url" :src="image.url" :alt="image.name || '任务图片'" />
+                                    </div>
+                                </div>
                             </div>
                             <div v-if="activeTask.scheduledAt" class="schedule-note">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 8v5l3 2" /></svg>
@@ -105,8 +110,10 @@
 
                         <section v-if="draft" class="artifact-card">
                             <div class="artifact-card__head"><span>博客草稿</span><button type="button" @click="draftVisible = true">查看全文</button></div>
+                            <img v-if="draft.poster" class="artifact-card__poster" :src="draft.poster" :alt="draft.title" />
                             <h3>{{ draft.title }}</h3>
                             <p>{{ draft.summary || draft.content.slice(0, 100) }}</p>
+                            <small v-if="draft.images?.length">已包含 {{ draft.images.length }} 张图片</small>
                         </section>
 
                         <section v-if="activeTask.status === 'waiting_approval' && activeTask.pendingAction" class="approval-card">
@@ -142,6 +149,13 @@
                         </button>
                         <input v-if="scheduleEnabled" v-model="scheduledAt" type="datetime-local" aria-label="任务执行时间" :min="minimumSchedule" />
                     </div>
+                    <div class="attachment-control">
+                        <button type="button" :class="{ active: attachmentEnabled }" @click="attachmentEnabled = !attachmentEnabled">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12.5 14.2 6.3a3 3 0 1 1 4.2 4.2l-8.5 8.5a5 5 0 0 1-7.1-7.1l8-8" /></svg>
+                            {{ attachmentEnabled ? "图片附件" : "添加图片" }}
+                        </button>
+                        <input v-if="attachmentEnabled" v-model="attachmentUrl" type="url" placeholder="粘贴公开图片 URL（https://…）" aria-label="图片 URL" />
+                    </div>
                     <div class="composer-box">
                         <textarea
                             v-model="messageText"
@@ -168,6 +182,7 @@
             <article v-if="draft" class="draft-preview">
                 <h1>{{ draft.title }}</h1>
                 <p class="draft-preview__summary">{{ draft.summary }}</p>
+                <img v-if="draft.poster" class="draft-preview__poster" :src="draft.poster" :alt="draft.title" />
                 <pre>{{ draft.content }}</pre>
             </article>
         </a-modal>
@@ -191,6 +206,8 @@ const scheduleEnabled = ref(false);
 const scheduledAt = ref("");
 const submitting = ref(false);
 const draftVisible = ref(false);
+const attachmentEnabled = ref(false);
+const attachmentUrl = ref("");
 const scrollArea = ref<HTMLElement | null>(null);
 let pollTimer: number | null = null;
 
@@ -271,6 +288,8 @@ function startNewTask() {
     messageText.value = "";
     scheduleEnabled.value = false;
     scheduledAt.value = "";
+    attachmentEnabled.value = false;
+    attachmentUrl.value = "";
 }
 
 function useExample() {
@@ -282,6 +301,13 @@ async function submitMessage() {
     if (!content || submitting.value) return;
     submitting.value = true;
     try {
+        const attachments = attachmentUrl.value.trim()
+            ? [{ type: "image" as const, url: attachmentUrl.value.trim(), name: "用户提供的图片" }]
+            : [];
+        if (attachments.length && !/^https?:\/\//i.test(attachments[0].url)) {
+            message.error("图片附件必须是可公开访问的 HTTP(S) URL");
+            return;
+        }
         if (props.preview) {
             const now = new Date().toISOString();
             const previewTask: PetTask = {
@@ -294,7 +320,8 @@ async function submitMessage() {
                 timezone: "Asia/Shanghai",
                 context: {
                     plan: ["搜索站内博客", "识别作者与资料", "关注作者", "撰写博客草稿", "确认后发布"],
-                    artifacts: { draft: { title: "Vue 3 实战：把复杂交互拆成可靠的响应式流程", summary: "从真实博客案例出发，整理 Vue 3 响应式设计与工程实践。", content: "# Vue 3 实战\n\n这是一份由小Y整理的开发预览草稿。\n\n## 从问题开始\n\n先明确状态边界，再拆分交互步骤。\n\n## 实践建议\n\n让每一步都可观察、可恢复，并为高影响操作保留人工确认。" } },
+                    attachments,
+                    artifacts: { draft: { title: "Vue 3 实战：把复杂交互拆成可靠的响应式流程", summary: "从真实博客案例出发，整理 Vue 3 响应式设计与工程实践。", content: "# Vue 3 实战\n\n这是一份由小Y整理的开发预览草稿。\n\n## 从问题开始\n\n先明确状态边界，再拆分交互步骤。\n\n## 实践建议\n\n让每一步都可观察、可恢复，并为高影响操作保留人工确认。", poster: attachments[0]?.url || "", images: attachments } },
                 },
                 pendingAction: content.includes("发布") ? { type: "publish_blog", label: "发布文章《Vue 3 实战：把复杂交互拆成可靠的响应式流程》" } : null,
                 result: null,
@@ -319,16 +346,20 @@ async function submitMessage() {
             messageText.value = "";
             scheduleEnabled.value = false;
             scheduledAt.value = "";
+            attachmentEnabled.value = false;
+            attachmentUrl.value = "";
             message.success("开发预览任务已生成");
             return;
         }
         const response = activeTask.value
-            ? await petAgentService.addMessage(activeTask.value.id, content)
-            : await petAgentService.createTask({ message: content, scheduledAt: scheduleEnabled.value && scheduledAt.value ? new Date(scheduledAt.value).toISOString() : undefined, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai" });
+            ? await petAgentService.addMessage(activeTask.value.id, content, attachments)
+            : await petAgentService.createTask({ message: content, attachments, scheduledAt: scheduleEnabled.value && scheduledAt.value ? new Date(scheduledAt.value).toISOString() : undefined, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai" });
         activeTask.value = response.data;
         messageText.value = "";
         scheduleEnabled.value = false;
         scheduledAt.value = "";
+        attachmentEnabled.value = false;
+        attachmentUrl.value = "";
         await loadTasks();
         message.success(response.data.status === "scheduled" ? "任务已安排，到时间后小Y会自动执行" : "任务已交给小Y");
     } finally {
@@ -424,6 +455,8 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .user-message { display: flex; justify-content: flex-end; align-items: flex-start; gap: 8px; }
 .user-message > span { order: 2; flex: 0 0 auto; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: $navy; color: white; font-size: 11px; }
 .user-message p { max-width: 330px; margin: 0; padding: 11px 13px; border-radius: 14px 4px 14px 14px; background: #eafaf6; color: $navy; font-size: 14px; line-height: 1.65; }
+.message-images { display: flex; justify-content: flex-end; gap: 6px; margin-top: 7px; }
+.message-images img { width: 74px; height: 58px; object-fit: cover; border: 1px solid $line; border-radius: 8px; }
 .schedule-note { width: fit-content; margin: 9px 36px 0 auto; display: flex; align-items: center; gap: 6px; color: $muted; font-size: 12px; }
 .schedule-note svg, .schedule-control svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .plan-block, .activity-block { margin-top: 24px; }
@@ -454,6 +487,8 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .artifact-card { padding: 14px; border: 1px solid #cfe8e1; background: #fbfefd; }
 .artifact-card__head { display: flex; justify-content: space-between; color: $mint-dark; font-size: 12px; }.artifact-card__head button { border: 0; background: transparent; color: $mint-dark; cursor: pointer; text-decoration: underline; }
 .artifact-card h3 { margin: 9px 0 5px; font-size: 15px; }.artifact-card p { margin: 0; color: $muted; font-size: 12px; line-height: 1.6; }
+.artifact-card small { display: block; margin-top: 7px; color: $mint-dark; font-size: 11px; }
+.artifact-card__poster { width: 100%; max-height: 160px; margin-top: 10px; object-fit: cover; border-radius: 8px; }
 .approval-card { display: grid; grid-template-columns: 38px 1fr; gap: 11px; padding: 14px; border: 1px solid #f1d987; background: #fffdf5; }
 .approval-card__icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; color: #bd8200; background: #fff4c9; }.approval-card__icon svg { width: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
 .approval-card h3 { margin: 1px 0 4px; font-size: 14px; }.approval-card p { margin: 0; color: $muted; font-size: 12px; }
@@ -462,12 +497,18 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .error-card { padding: 13px; border: 1px solid #ffc5c1; background: #fff7f6; }
 .agent-composer { flex: 0 0 auto; padding: 11px 15px 14px; border-top: 1px solid $line; background: white; }
 .schedule-control { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }.schedule-control button { display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 1px solid $line; border-radius: 7px; background: white; color: $muted; font-size: 12px; cursor: pointer; }.schedule-control button.active { color: $mint-dark; border-color: $mint; background: #f0fcf8; }.schedule-control input { min-width: 0; flex: 1; height: 30px; padding: 0 8px; color: $navy; border: 1px solid $line; border-radius: 7px; font-size: 12px; }
+.attachment-control { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.attachment-control button { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 1px solid $line; border-radius: 7px; background: white; color: $muted; font-size: 12px; cursor: pointer; }
+.attachment-control button.active { color: $mint-dark; border-color: $mint; background: #f0fcf8; }
+.attachment-control svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.attachment-control input { min-width: 0; flex: 1; height: 30px; padding: 0 8px; color: $navy; border: 1px solid $line; border-radius: 7px; font-size: 12px; }
 .composer-box { display: flex; align-items: flex-end; gap: 8px; padding: 9px 9px 9px 12px; border: 1px solid #cbd7e2; border-radius: 11px; background: white; transition: border-color .2s, box-shadow .2s; }.composer-box:focus-within { border-color: $mint; box-shadow: 0 0 0 3px rgba(85,221,181,.13); }
 .composer-box textarea { flex: 1; min-height: 42px; max-height: 110px; resize: none; border: 0; outline: none; color: $navy; font-size: 13px; line-height: 1.55; }.composer-box textarea::placeholder { color: #9aa6b8; }
 .send-button { flex: 0 0 auto; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid $mint-dark; border-radius: 9px; background: $mint; color: $navy; cursor: pointer; }.send-button:disabled { opacity: .45; cursor: default; }.send-button svg { width: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
 .composer-hint { margin: 7px 0 0; text-align: center; color: #98a4b4; font-size: 10px; }
 .task-controls { display: flex; align-items: center; gap: 9px; margin-top: 7px; font-size: 10px; color: #98a4b4; }.task-controls span { flex: 1; text-align: center; }.task-controls button { border: 0; background: transparent; color: $muted; cursor: pointer; font-size: 11px; }.task-controls .danger { color: $coral; }
 .draft-preview h1 { color: $navy; font-size: 25px; }.draft-preview__summary { color: $muted; line-height: 1.7; }.draft-preview pre { white-space: pre-wrap; word-break: break-word; color: #233c5e; font-family: var(--xy-font-body, sans-serif); font-size: 14px; line-height: 1.8; }
+.draft-preview__poster { width: 100%; max-height: 340px; margin: 12px 0; object-fit: cover; border-radius: 10px; }
 .agent-slide-enter-active, .agent-slide-leave-active { transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s; }.agent-slide-enter-from, .agent-slide-leave-to { transform: translateX(100%); opacity: .6; }
 .agent-fade-enter-active, .agent-fade-leave-active { transition: opacity .22s; }.agent-fade-enter-from, .agent-fade-leave-to { opacity: 0; }
 @keyframes pet-pulse { 50% { box-shadow: 0 0 0 7px rgba(85,221,181,0); } }

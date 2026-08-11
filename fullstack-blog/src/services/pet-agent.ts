@@ -34,8 +34,17 @@ export interface PetTask {
     context: {
         iteration?: number;
         plan?: string[];
+        attachments?: Array<{ type: "image"; url: string; name?: string }>;
         artifacts?: {
-            draft?: { title: string; summary: string; content: string; tags?: string[] };
+            draft?: {
+                title: string;
+                summary: string;
+                content: string;
+                tags?: string[];
+                poster?: string;
+                images?: Array<{ url: string; alt?: string; provider?: string; model?: string }>;
+                imagePlan?: Array<{ prompt: string; alt: string; placement: "cover" | "inline"; sectionTitle?: string }>;
+            };
         };
     };
     pendingAction?: { type: string; label: string; payload?: Record<string, any> } | null;
@@ -53,7 +62,7 @@ class PetAgentService extends ApiService {
         super("pet-agent");
     }
 
-    createTask(params: { message: string; scheduledAt?: string; timezone?: string }) {
+    createTask(params: { message: string; scheduledAt?: string; timezone?: string; attachments?: Array<{ type: "image"; url: string; name?: string }> }) {
         return this.$postJson<CommonResponse<PetTask>>("tasks", params);
     }
 
@@ -65,8 +74,8 @@ class PetAgentService extends ApiService {
         return this.$get<CommonResponse<PetTask>>(`tasks/${id}`);
     }
 
-    addMessage(id: string, content: string) {
-        return this.$postJson<CommonResponse<PetTask>>(`tasks/${id}/messages`, { content });
+    addMessage(id: string, content: string, attachments?: Array<{ type: "image"; url: string; name?: string }>) {
+        return this.$postJson<CommonResponse<PetTask>>(`tasks/${id}/messages`, { content, attachments });
     }
 
     approve(id: string, approved: boolean) {

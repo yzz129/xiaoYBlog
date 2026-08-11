@@ -6,7 +6,7 @@ const { getFetch } = require('../utils/fetch');
  */
 class TavilySearchTool {
     constructor(apiKey) {
-        this.apiKey = apiKey || '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';
+        this.apiKey = apiKey || process.env.TAVILY_API_KEY || '';
         this.baseUrl = 'https://api.tavily.com/search';
         this.requestTimeoutMs = 20000;
     }
@@ -18,10 +18,19 @@ class TavilySearchTool {
      */
     async search(query) {
         try {
+            if (!this.apiKey) {
+                return { success: false, error: '未配置 TAVILY_API_KEY' };
+            }
             const fetch = await getFetch();
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
-            const response = await fetch(`${this.baseUrl}?api_key=${this.apiKey}&query=${encodeURIComponent(query)}&limit=5`, {
+            const response = await fetch(this.baseUrl, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ query, max_results: 5, search_depth: 'basic' }),
                 signal: controller.signal,
             }).finally(() => clearTimeout(timeout));
 

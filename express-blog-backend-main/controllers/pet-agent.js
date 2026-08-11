@@ -18,6 +18,19 @@ function inferTitle(goal) {
     return text.length > 34 ? `${text.slice(0, 34)}…` : text || "新任务";
 }
 
+function normalizeAttachments(value) {
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, 6).map((item) => {
+        try {
+            const url = new URL(String(item?.url || ""));
+            if (!["http:", "https:"].includes(url.protocol)) return null;
+            return { type: "image", url: url.toString(), name: String(item?.name || "图片").slice(0, 120) };
+        } catch (_error) {
+            return null;
+        }
+    }).filter(Boolean);
+}
+
 function parseNaturalSchedule(goal) {
     const text = String(goal || "");
     const dayOffset = /后天/.test(text) ? 2 : /明天|明日/.test(text) ? 1 : /今天|今日/.test(text) ? 0 : null;
@@ -48,6 +61,7 @@ router.post("/tasks", async (req, res) => {
             scheduledAt,
             timezone: String(req.body?.timezone || "Asia/Shanghai").slice(0, 64),
             status,
+            attachments: normalizeAttachments(req.body?.attachments),
         });
         await store.addEvent(task.id, {
             type: "status",
@@ -87,8 +101,10 @@ router.post("/tasks/:id/messages", async (req, res) => {
     try {
         const task = await store.getTask(req.params.id, userId(req));
         if (!task) return sendError(res, "任务不存在", "016404");
+        const attachments = normalizeAttachments(req.body?.attachments);
         const context = {
             ...(task.context || {}),
+            attachments: [...(task.context?.attachments || []), ...attachments].slice(-6),
             observations: [...(task.context?.observations || []), { tool: "user_instruction", summary: content, data: { content } }],
         };
         await store.updateTask(task.id, { context, status: "queued", lastError: "" });

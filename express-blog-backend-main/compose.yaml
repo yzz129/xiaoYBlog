@@ -17,7 +17,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-8002}
       ALLOW_CLIENT: ${ALLOW_CLIENT}
-      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_HOST: ${MYSQL_HOST:-mysql}
       MYSQL_PORT: ${MYSQL_PORT}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
@@ -60,7 +60,30 @@ services:
     ports:
       - ${PORT:-8002}:${PORT:-8002}
     depends_on:
-      - minio
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-blog}
+    ports:
+      - ${MYSQL_PORT:-3306}:3306
+    volumes:
+      - mysql-data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
   minio:
     image: minio/minio:latest
@@ -106,6 +129,7 @@ services:
 # volumes:
 #   db-data:
 volumes:
+  mysql-data:
   minio-data:
 # secrets:
 #   db-password:

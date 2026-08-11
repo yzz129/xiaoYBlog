@@ -141,3 +141,34 @@ MySQL 启动后，服务会自动创建 `agent_task` 与 `agent_task_event` 两�
 - `POST /tasks/:id/pause|resume|cancel`：控制长任务
 
 前端开发环境可使用 `/login?agentPreview=1` 查看隔离的 UI 预览状态。该入口只在 Vite 开发模式生效，不会绕过生产鉴权，也不会调用真实 Agent API。
+
+### 多提供商、搜索与多模态配置
+
+宠物 Agent 支持按顺序自动故障转移。推荐把密钥写在不会提交的 `.env.local`，不要写进前端变量或源码：
+
+```env
+PET_AGENT_PROVIDER_ORDER=agnes,openrouter,openai,deepseek
+
+# OpenRouter 只允许 openrouter/free 或以 :free 结尾的模型；其他模型会在本地被过滤。
+OPENROUTER_API_KEY=
+OPENROUTER_AGENT_MODEL=openrouter/free
+
+# Agnes 用于文本、图片理解，并作为图片生成后备。
+AGNES_API_KEY=
+AGNES_AGENT_MODEL=agnes-2.5-flash
+AGNES_IMAGE_MODEL=agnes-image-2.1-flash
+
+# 百度 AI 搜索与 Tavily 会并行查询，一个失败时自动使用另一个。
+BAIDU_SEARCH_API_KEY=
+BAIDU_SEARCH_MODEL=deepseek-v4-flash
+TAVILY_API_KEY=
+
+# Pollinations 仅允许官方实时模型目录中价格字段全部为 0 的图片模型。
+# 当前没有可确认的零价模型时请保持为空，系统不会消耗 Pollen。
+POLLINATIONS_API_KEY=
+POLLINATIONS_IMAGE_MODEL=
+```
+
+`web_search` 会合并百度与 Tavily 的网页、图片和来源信息。`analyze_image` 可把公开图片 URL 交给视觉模型理解；`draft_blog` 会同时读取文字资料和任务图片，并产生真实图片或待执行的配图计划；`generate_blog_image` 会生成图片、上传到 MinIO、写入 Markdown，并把封面 URL 保存到文章的 `poster` 字段。发布和覆盖更新仍然必须由任务所有者审批。
+
+免费约束在后端强制执行，而不是只靠配置约定：OpenRouter 非免费模型不会进入提供商列表；Pollinations 每次调用前都会重新读取官方模型目录并检查价格，无法证明为零价时直接拒绝调用。免费模型和免费额度通常有速率与可用性限制，因此长任务可能自动切换到后续提供商。

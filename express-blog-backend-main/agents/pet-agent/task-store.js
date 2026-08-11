@@ -101,10 +101,10 @@ async function ensureTables() {
     return tablesReadyPromise;
 }
 
-async function createTask({ userId, title, goal, scheduledAt = null, timezone = "Asia/Shanghai", status = "queued" }) {
+async function createTask({ userId, title, goal, scheduledAt = null, timezone = "Asia/Shanghai", status = "queued", attachments = [] }) {
     await ensureTables();
     const id = `pet_${crypto.randomUUID()}`;
-    const context = { iteration: 0, observations: [], artifacts: {}, plan: [] };
+    const context = { iteration: 0, observations: [], artifacts: {}, plan: [], attachments };
     await dbUtils.query({
         sql: `INSERT INTO agent_task
               (id, user_id, title, goal, status, scheduled_at, timezone, context_json)

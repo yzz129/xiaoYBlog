@@ -156,15 +156,19 @@ router.beforeEach(async (to, _from, next) => {
     }
 
     const store = useStore();
-    if (!store.isAuthed) {
-        try {
-            await store.fetchCurrent(true);
-        } catch (_error) {
-            // ignore fetch errors here; handled by response interceptor
-        }
+    if (!store.token) {
+        store.clearUserSession();
+        next("/login");
+        return;
     }
 
-    if (store.isAuthed) {
+    try {
+        await store.fetchCurrent(true);
+    } catch (_error) {
+        // A stale or invalid token is cleared by the response interceptor.
+    }
+
+    if (store.isAuthed && store.userInfo) {
         next();
         return;
     }

@@ -711,6 +711,7 @@ $coral: #ff766f;
 $yellow: #ffbf2f;
 
 button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sans-serif); }
+.pet-launcher, .pet-recall, .agent-drawer { font-family: var(--xy-font-body, "Microsoft YaHei", sans-serif); }
 .pet-launcher { position: fixed; right: 26px; bottom: 24px; z-index: 1100; width: 86px; height: 86px; transition: transform .22s ease, opacity .2s ease; }
 .pet-launcher--open { transform: translateX(-430px); }
 .pet-launcher__orb { position: relative; width: 100%; height: 100%; overflow: visible; border: 0; background: transparent; cursor: grab; padding: 0; filter: drop-shadow(0 10px 16px rgba(12, 41, 79, .16)); touch-action: none; user-select: none; transition: transform .22s ease, filter .22s ease; }
@@ -795,7 +796,8 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .task-rail button { flex: 0 0 auto; max-width: 168px; display: flex; align-items: center; gap: 7px; padding: 7px 10px; color: $muted; background: white; border: 1px solid $line; border-radius: 8px; font-size: 12px; cursor: pointer; }
 .task-rail button span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-rail button.active { color: $navy; border-color: $mint; background: #f0fcf8; }
-.agent-content { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 18px 30px; scroll-behavior: smooth; }
+.agent-content { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 18px 30px; scroll-behavior: smooth; scrollbar-width: none; }
+.agent-content::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .agent-welcome { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 26px; }
 .agent-welcome__art { width: 142px; height: 122px; overflow: hidden; }
 .agent-welcome__art img { width: 100%; height: 100%; object-fit: contain; }

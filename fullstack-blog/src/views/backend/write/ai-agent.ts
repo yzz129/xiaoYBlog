@@ -112,7 +112,7 @@ export class WritingAgent {
             const decoder = new TextDecoder();
             let fullContent = '';
 
-            while (true) {
+            for (;;) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
@@ -214,7 +214,7 @@ ${sectionIndex > 0 ? '前文内容：' + this.state.content.substring(Math.max(0
             const decoder = new TextDecoder();
             let sectionContent = '';
 
-            while (true) {
+            for (;;) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
@@ -306,7 +306,7 @@ ${feedback}
             const decoder = new TextDecoder();
             let revisedContent = '';
 
-            while (true) {
+            for (;;) {
                 const { done, value } = await reader.read();
                 if (done) break;
 

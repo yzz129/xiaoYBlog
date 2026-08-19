@@ -30,7 +30,7 @@
                     </header>
 
                     <main class="article-main">
-                        <el-image v-if="article.poster" :src="article.poster" class="article-poster" fit="cover" />
+                        <img v-if="article.poster" :src="article.poster" class="article-poster" :alt="article.article_name" decoding="async" />
                         <section class="md-preview" v-html="purifiedContent"></section>
                     </main>
 

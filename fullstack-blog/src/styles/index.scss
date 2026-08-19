@@ -6,7 +6,7 @@
 @use "./page-refresh.scss";
 
 @font-face {
-    font-family: "XY Rounded";
+    font-family: "XY Rounded UI";
     src: url("../assets/fonts/xy-rounded-ui.woff2") format("woff2");
     font-style: normal;
     font-weight: 400;
@@ -14,8 +14,24 @@
 }
 
 @font-face {
-    font-family: "XY Doodle";
+    font-family: "XY Rounded Full";
+    src: url("../assets/fonts/xy-rounded-full.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "XY Doodle UI";
     src: url("../assets/fonts/xy-doodle-ui.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "XY Doodle Full";
+    src: url("../assets/fonts/xy-doodle-full.woff2") format("woff2");
     font-style: normal;
     font-weight: 400;
     font-display: swap;
@@ -26,8 +42,8 @@
  * 正文使用圆润字形，标题保留轻盈可爱的手写感。
  */
 :root {
-    --xy-font-body: "XY Rounded", "YouYuan", "幼圆", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-    --xy-font-display: "XY Doodle", "XY Rounded", "YouYuan", "幼圆", sans-serif;
+    --xy-font-body: "XY Rounded UI", "XY Rounded Full", "YouYuan", "幼圆", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+    --xy-font-display: "XY Doodle UI", "XY Doodle Full", "XY Rounded UI", "XY Rounded Full", "YouYuan", "幼圆", sans-serif;
     --xy-font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     --xy-white: #ffffff;
     --xy-paper: #fbfdfc;
@@ -54,6 +70,18 @@ body,
     min-height: 100%;
 }
 
+/* 隐藏所有平台的滚动条，滚轮、触摸和键盘滚动仍然可用。 */
+* {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+}
+
+*::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
 body {
     margin: 0;
     color: var(--xy-ink);
@@ -64,6 +92,7 @@ body {
     letter-spacing: 0.012em;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizelegibility;
+    font-synthesis: weight style;
 }
 
 /*
@@ -95,10 +124,7 @@ select,
         .ant-tabs,
         .ant-pagination,
         .ant-tag,
-        .ant-dropdown-menu,
-        .el-button,
-        .el-input,
-        .el-select
+        .ant-dropdown-menu
     ),
 :where(.ant-modal, .ant-drawer, .ant-message, .ant-notification, .ant-dropdown) {
     font-family: var(--xy-font-body) !important;
@@ -167,9 +193,7 @@ img {
     .ant-input,
     .ant-input-affix-wrapper,
     .ant-select-selector,
-    .ant-picker,
-    .el-input__wrapper,
-    .el-select__wrapper {
+    .ant-picker {
         border-radius: 8px !important;
         font-family: inherit;
         font-weight: 650;
@@ -194,8 +218,7 @@ img {
 
     .ant-card,
     .ant-modal-content,
-    .ant-drawer-content,
-    .el-card {
+    .ant-drawer-content {
         border: 1px solid var(--xy-line);
         border-radius: var(--xy-radius);
         box-shadow: none;

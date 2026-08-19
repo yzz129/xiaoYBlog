@@ -45,9 +45,6 @@ export default defineConfig({
     },
     css: {
         preprocessorOptions: {
-            less: {
-                javascriptEnabled: true,
-            },
             scss: {
                 api: "modern-compiler",
                 additionalData: '@use "@/styles/preload.scss" as *;',
@@ -85,9 +82,6 @@ export default defineConfig({
 
                     // ant-design-vue main library
                     if (id.includes("ant-design-vue")) return "antd";
-
-                    // element-plus — only ElImage is used, but isolate to avoid bundling into vendor
-                    if (id.includes("element-plus")) return "element";
 
                     // Heavy document processing libraries (lazy-loaded)
                     if (id.includes("pdfjs-dist")) return "pdf";

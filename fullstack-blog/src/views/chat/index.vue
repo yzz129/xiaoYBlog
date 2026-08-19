@@ -606,20 +606,6 @@ watch(
     max-height: min(720px, calc(100vh - 280px));
     overflow: auto;
 
-    &::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-
-    &::-webkit-scrollbar-thumb {
-        border-radius: 999px;
-        background-color: rgba(148, 163, 184, 0.66);
-    }
-
-    &::-webkit-scrollbar-track {
-        background: rgba(240, 244, 248, 0.8);
-    }
-
     > li + li {
         margin-top: 12px;
     }

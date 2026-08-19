@@ -2,7 +2,7 @@
     <article class="article-card" :class="{ 'article-card--featured': featured }">
         <section class="article-card__body">
             <router-link :to="`/article/${article.id}`" class="article-visual" :aria-label="article.article_name">
-                <el-image v-if="featured" :src="coverSource" fit="cover" class="article-poster" lazy />
+                <img v-if="featured" :src="coverSource" class="article-poster" :alt="article.article_name" loading="lazy" decoding="async" />
                 <DoodleIcon v-else :name="illustrationName" class="article-doodle" />
                 <span v-if="featured" class="featured-note">Featured</span>
             </router-link>

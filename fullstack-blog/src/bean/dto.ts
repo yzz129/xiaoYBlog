@@ -7,6 +7,7 @@ export interface RecordDTO extends PlainObject {
 export interface ArticleDTO extends RecordDTO {
     article_name: string;
     article_text: string;
+    content?: string;
     author: string;
     author_user_id?: number;
     author_avatar?: string;
@@ -15,6 +16,7 @@ export interface ArticleDTO extends RecordDTO {
     summary: string;
     read_num: number;
     create_time: string;
+    update_time?: string;
     private: 0 | 1;
     tags: TagCamelCaseDTO[];
     categories: CategoryCamelCaseDTO[];

@@ -13,17 +13,33 @@ const config = require("./config");
 const app = express();
 
 const server = http.createServer(app);
+const isProduction = process.env.NODE_ENV === 'production';
+const sessionSameSite = ['lax', 'strict', 'none'].includes(String(config.session.sameSite).toLowerCase())
+  ? String(config.session.sameSite).toLowerCase()
+  : 'lax';
+
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 app.set('port', process.env.PORT || '3000');
 
-const sesisonMiddleware = session({
-  secret: 'llwb', 
-  cookie: ({ path: '/', httpOnly: true, secure: false, maxAge: null }),
-  resave: true,  
-  saveUninitialized: true
+const sessionMiddleware = session({
+  name: config.session.cookieName,
+  secret: config.session.secret,
+  cookie: {
+    path: '/',
+    httpOnly: true,
+    secure: config.session.secure,
+    sameSite: sessionSameSite,
+    maxAge: config.session.maxAgeMs,
+  },
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
 });
 
 // 如果使用Nginx，则在nginx处理gzip即可
@@ -31,7 +47,7 @@ const sesisonMiddleware = session({
 // 完善http头部，提高安全性
 app.use(helmet());
 // session 中间件
-app.use(sesisonMiddleware);
+app.use(sessionMiddleware);
 // 日志中间件
 app.use(logger('dev'));
 // parse application/json，express@4.16.0内置，替代了 body-parser

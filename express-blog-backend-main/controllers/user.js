@@ -6,6 +6,7 @@ const router = express.Router();
 const config = require("../config");
 const dbUtils = require("../utils/db");
 const emailHandler = require("../utils/email");
+const { hashCredential, verifyCredential } = require("../utils/password");
 const { emitDirectMessageToUsers, emitUnreadSummaryToUser } = require("../utils/ws");
 
 const DEFAULT_PAGE_NO = 1;
@@ -332,15 +333,20 @@ router.put("/login", async (req, res) => {
 
     try {
         const user = await getUserByUsername(connection, userName);
-        if (!user || user.password !== password) {
+        const verification = user ? await verifyCredential(password, user.password) : { valid: false, needsUpgrade: false };
+        if (!verification.valid) {
             sendError(res, "001003", "用户名或密码错误");
             return;
         }
 
+        const upgradedPassword = verification.needsUpgrade ? await hashCredential(password) : null;
+
         await dbUtils.query(
             {
-                sql: "UPDATE user SET update_time = ? WHERE id = ?",
-                values: [new Date(), user.id],
+                sql: upgradedPassword
+                    ? "UPDATE user SET password = ?, update_time = ? WHERE id = ?"
+                    : "UPDATE user SET update_time = ? WHERE id = ?",
+                values: upgradedPassword ? [upgradedPassword, new Date(), user.id] : [new Date(), user.id],
             },
             connection,
             false
@@ -829,15 +835,18 @@ router.put("/password", async (req, res) => {
         );
 
         const user = results[0];
-        if (!user || user.password !== currentPassword) {
+        const verification = user ? await verifyCredential(currentPassword, user.password) : { valid: false };
+        if (!verification.valid) {
             sendError(res, "001009", "当前密码不正确");
             return;
         }
 
+        const securedPassword = await hashCredential(newPassword);
+
         await dbUtils.query(
             {
                 sql: "UPDATE user SET password = ?, update_time = ? WHERE id = ?",
-                values: [newPassword, new Date(), getCurrentUserId(req)],
+                values: [securedPassword, new Date(), getCurrentUserId(req)],
             },
             connection,
             false
@@ -901,7 +910,7 @@ router.post("/register", async (req, res) => {
 
         const userData = {
             username: userName,
-            password,
+            password: await hashCredential(password),
             nick_name: nickName,
             role: "user",
             create_time: new Date(),

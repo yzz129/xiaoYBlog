@@ -8,6 +8,7 @@ const config = require("../config");
 const indexSQL = require("../sql");
 const dbUtils = require("../utils/db");
 const emailHandler = require("../utils/email");
+const { ensureContentAuthorColumns } = require("../utils/content-schema");
 
 const DEFAULT_PAGE_NO = 1;
 const DEFAULT_PAGE_SIZE = 10;
@@ -70,6 +71,15 @@ const notifyOwner = async (subject, html) => {
         console.error(error);
     }
 };
+
+router.use(async (_req, _res, next) => {
+    try {
+        await ensureContentAuthorColumns();
+        next();
+    } catch (error) {
+        next(error);
+    }
+});
 
 router.post("/add", async (req, res) => {
     try {

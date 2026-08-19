@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 
 const config = require("../config");
 const dbUtils = require("../utils/db");
+const { ensureContentAuthorColumns } = require("../utils/content-schema");
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://127.0.0.1:8002";
 
@@ -46,6 +47,7 @@ async function main() {
     let pendingReplyId = 0;
 
     try {
+        await ensureContentAuthorColumns();
         const replyColumns = await getTableColumns("reply");
         const { results: users } = await dbUtils.query({
             sql: "SELECT id, username, nick_name, role FROM user ORDER BY id ASC LIMIT 1",
@@ -177,10 +179,10 @@ async function main() {
 }
 
 main()
-    .then(() => {
-        process.exit(0);
-    })
     .catch((error) => {
         console.error(error);
-        process.exit(1);
+        process.exitCode = 1;
+    })
+    .finally(async () => {
+        await dbUtils.pool.end();
     });

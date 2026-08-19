@@ -158,6 +158,7 @@ let hideTimer: number | null = null;
 
 const hideMenu = () => {
     store.isMenuVisible = false;
+    document.body.style.overflow = "";
 };
 
 const onToggleMenu = () => {
@@ -172,7 +173,10 @@ const onToggleMenu = () => {
 
 const onClickMask = () => {
     hideMenu();
-    document.body.style.overflow = "";
+};
+
+const onKeydown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && isMenuVisible.value) hideMenu();
 };
 
 const clearHideTimer = () => {
@@ -230,7 +234,7 @@ const onSearch = () => {
         path: "/search",
         query: {
             q: keyword,
-            tab: "users",
+            tab: "articles",
         },
     });
 };
@@ -245,6 +249,7 @@ watch(
 
 onMounted(() => {
     document.addEventListener("scroll", onScrollThrottle, { passive: true });
+    document.addEventListener("keydown", onKeydown);
     setHideTimer();
 });
 
@@ -252,6 +257,7 @@ onBeforeUnmount(() => {
     hideMenu();
     document.body.style.overflow = "";
     document.removeEventListener("scroll", onScrollThrottle);
+    document.removeEventListener("keydown", onKeydown);
     clearHideTimer();
 });
 </script>

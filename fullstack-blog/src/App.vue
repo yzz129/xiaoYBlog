@@ -3,7 +3,7 @@
         <section :class="{ 'hidden-x': isMenuVisible, 'is-admin': isAdmin }">
             <router-view :key="$route.path" />
         </section>
-        <AgentPet :visible="showAgentPet" :preview="agentPreview" />
+        <AgentPet :visible="showAgentPet" :preview="agentPreview" :authenticated="store.isAuthed" />
     </a-config-provider>
 </template>
 
@@ -39,7 +39,7 @@ const isMenuVisible = computed(() => store.isMenuVisible);
 
 const agentPreview = computed(() => import.meta.env.DEV && route.query.agentPreview === "1");
 
-const showAgentPet = computed(() => (store.isAuthed && route.name !== "Login") || agentPreview.value);
+const showAgentPet = computed(() => route.name !== "Login" || agentPreview.value);
 </script>
 
 <style lang="scss" scoped>

@@ -239,8 +239,8 @@ const handleReplySub = async () => {
 
 const { trigger: onClickReplySub, loading: isReplySubLoading } = useAsyncLoading(handleReplySub);
 
-const avatarFallback = new URL("@/assets/img/comment-avatar.svg", import.meta.url).href;
-const replyAvatarFallback = new URL("@/assets/img/reply-avatar.svg", import.meta.url).href;
+const avatarFallback = new URL("@/assets/img/default-avatar.png", import.meta.url).href;
+const replyAvatarFallback = avatarFallback;
 
 const formattedComment = computed(() => ({
     ...props.comment,

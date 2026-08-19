@@ -37,7 +37,9 @@ class LazyloadHelper {
 
 // Use a single shared IntersectionObserver for all lazyload elements
 let sharedObserver: IntersectionObserver | null = null;
-const observedElements = new WeakMap<HTMLElement, LazyloadHelper>();
+// A Map is intentional here: beforeUnmount/intersection cleanup removes entries,
+// and the size lets us release the shared observer after the last image is gone.
+const observedElements = new Map<HTMLElement, LazyloadHelper>();
 
 function getSharedObserver(): IntersectionObserver {
     if (!sharedObserver) {
@@ -96,6 +98,8 @@ class ScrollFallbackHelper {
     }
 }
 
+type LazyloadElement = HTMLElement & { __lazyloadFallback?: ScrollFallbackHelper };
+
 const supportsIntersectionObserver = typeof IntersectionObserver !== "undefined";
 
 export default {
@@ -107,7 +111,7 @@ export default {
             helper.start();
         } else {
             const fallback = new ScrollFallbackHelper(el);
-            (el as any).__lazyloadFallback = fallback;
+            (el as LazyloadElement).__lazyloadFallback = fallback;
             fallback.start();
         }
     },
@@ -119,7 +123,7 @@ export default {
                 helper.handleUpdated();
             }
         } else {
-            const fallback = (el as any).__lazyloadFallback as ScrollFallbackHelper | undefined;
+            const fallback = (el as LazyloadElement).__lazyloadFallback;
             if (fallback) {
                 fallback.handleUpdated();
             }
@@ -139,7 +143,7 @@ export default {
                 sharedObserver = null;
             }
         } else {
-            const fallback = (el as any).__lazyloadFallback as ScrollFallbackHelper | undefined;
+            const fallback = (el as LazyloadElement).__lazyloadFallback;
             if (fallback) {
                 fallback.cleanup();
             }

@@ -36,6 +36,11 @@ function mapTask(row) {
         updatedAt: row.update_time,
         startedAt: row.started_at,
         completedAt: row.completed_at,
+        nextRetryAt: row.next_retry_at,
+        lockedBy: row.locked_by || "",
+        lockExpiresAt: row.lock_expires_at,
+        heartbeatAt: row.heartbeat_at,
+        attemptCount: Number(row.attempt_count || 0),
     };
 }
 
@@ -70,13 +75,45 @@ async function ensureTables() {
                     last_error TEXT NULL,
                     started_at DATETIME NULL,
                     completed_at DATETIME NULL,
+                    next_retry_at DATETIME NULL,
+                    locked_by VARCHAR(160) NULL,
+                    lock_expires_at DATETIME NULL,
+                    heartbeat_at DATETIME NULL,
+                    attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
                     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     PRIMARY KEY (id),
                     KEY idx_agent_task_user_time (user_id, create_time),
-                    KEY idx_agent_task_status_schedule (status, scheduled_at)
+                    KEY idx_agent_task_status_schedule (status, scheduled_at),
+                    KEY idx_agent_task_runnable (status, next_retry_at, lock_expires_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
             });
+            const { results: columns } = await dbUtils.query({ sql: "SHOW COLUMNS FROM agent_task" });
+            const existingColumns = new Set(columns.map((column) => column.Field));
+            const missingColumns = {
+                next_retry_at: "DATETIME NULL",
+                locked_by: "VARCHAR(160) NULL",
+                lock_expires_at: "DATETIME NULL",
+                heartbeat_at: "DATETIME NULL",
+                attempt_count: "INT UNSIGNED NOT NULL DEFAULT 0",
+            };
+            for (const [name, definition] of Object.entries(missingColumns)) {
+                if (!existingColumns.has(name)) {
+                    try {
+                        await dbUtils.query({ sql: `ALTER TABLE agent_task ADD COLUMN ${name} ${definition}` });
+                    } catch (error) {
+                        if (error.code !== "ER_DUP_FIELDNAME") throw error;
+                    }
+                }
+            }
+            const { results: indexes } = await dbUtils.query({ sql: "SHOW INDEX FROM agent_task" });
+            if (!indexes.some((index) => index.Key_name === "idx_agent_task_runnable")) {
+                try {
+                    await dbUtils.query({ sql: "ALTER TABLE agent_task ADD KEY idx_agent_task_runnable (status, next_retry_at, lock_expires_at)" });
+                } catch (error) {
+                    if (error.code !== "ER_DUP_KEYNAME") throw error;
+                }
+            }
             await dbUtils.query({
                 sql: `CREATE TABLE IF NOT EXISTS agent_task_event (
                     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -104,7 +141,16 @@ async function ensureTables() {
 async function createTask({ userId, title, goal, scheduledAt = null, timezone = "Asia/Shanghai", status = "queued", attachments = [] }) {
     await ensureTables();
     const id = `pet_${crypto.randomUUID()}`;
-    const context = { iteration: 0, observations: [], artifacts: {}, plan: [], attachments };
+    const maxSteps = Math.min(Math.max(Number(process.env.PET_AGENT_MAX_STEPS) || 24, 8), 60);
+    const context = {
+        iteration: 0,
+        observations: [],
+        artifacts: {},
+        plan: [],
+        attachments,
+        retryState: {},
+        budget: { maxSteps, usedSteps: 0, maxToolCalls: maxSteps, usedToolCalls: 0 },
+    };
     await dbUtils.query({
         sql: `INSERT INTO agent_task
               (id, user_id, title, goal, status, scheduled_at, timezone, context_json)
@@ -159,9 +205,9 @@ async function listRunnableTasks(limit = 8) {
     await ensureTables();
     const { results } = await dbUtils.query({
         sql: `SELECT * FROM agent_task
-              WHERE status = 'queued'
+              WHERE (status = 'queued' AND (next_retry_at IS NULL OR next_retry_at <= NOW()))
                  OR (status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= NOW())
-                 OR (status = 'running' AND update_time < DATE_SUB(NOW(), INTERVAL 2 MINUTE))
+                 OR (status = 'running' AND (lock_expires_at IS NULL OR lock_expires_at <= NOW()))
               ORDER BY COALESCE(scheduled_at, create_time) ASC LIMIT ?`,
         values: [Math.min(Math.max(Number(limit) || 8, 1), 20)],
     });
@@ -181,6 +227,11 @@ async function updateTask(id, updates = {}) {
         lastError: "last_error",
         startedAt: "started_at",
         completedAt: "completed_at",
+        nextRetryAt: "next_retry_at",
+        lockedBy: "locked_by",
+        lockExpiresAt: "lock_expires_at",
+        heartbeatAt: "heartbeat_at",
+        attemptCount: "attempt_count",
     };
     const jsonFields = new Set(["context", "pendingAction", "result"]);
     const assignments = [];
@@ -194,6 +245,82 @@ async function updateTask(id, updates = {}) {
     values.push(id);
     await dbUtils.query({
         sql: `UPDATE agent_task SET ${assignments.join(", ")}, update_time = NOW() WHERE id = ?`,
+        values,
+    });
+    return getTask(id);
+}
+
+function safeLeaseSeconds(value) {
+    return Math.min(Math.max(Number(value) || 90, 30), 600);
+}
+
+async function claimTask(id, workerId, leaseSeconds = 90) {
+    await ensureTables();
+    const lease = safeLeaseSeconds(leaseSeconds);
+    const { results } = await dbUtils.query({
+        sql: `UPDATE agent_task
+              SET status = 'running', locked_by = ?, lock_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND),
+                  heartbeat_at = NOW(), next_retry_at = NULL, attempt_count = attempt_count + 1,
+                  started_at = COALESCE(started_at, NOW()), update_time = NOW()
+              WHERE id = ?
+                AND (
+                    (status = 'queued' AND (next_retry_at IS NULL OR next_retry_at <= NOW()))
+                    OR (status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= NOW())
+                    OR (status = 'running' AND (lock_expires_at IS NULL OR lock_expires_at <= NOW()))
+                )
+                AND (locked_by IS NULL OR lock_expires_at IS NULL OR lock_expires_at <= NOW())`,
+        values: [workerId, lease, id],
+    });
+    return Number(results.affectedRows || 0) === 1 ? getTask(id) : null;
+}
+
+async function claimApproval(id, workerId, leaseSeconds = 90) {
+    await ensureTables();
+    const lease = safeLeaseSeconds(leaseSeconds);
+    const { results } = await dbUtils.query({
+        sql: `UPDATE agent_task
+              SET status = 'running', locked_by = ?, lock_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND),
+                  heartbeat_at = NOW(), update_time = NOW()
+              WHERE id = ? AND status = 'waiting_approval' AND pending_action_json IS NOT NULL
+                AND (locked_by IS NULL OR lock_expires_at IS NULL OR lock_expires_at <= NOW())`,
+        values: [workerId, lease, id],
+    });
+    return Number(results.affectedRows || 0) === 1 ? getTask(id) : null;
+}
+
+async function heartbeatTask(id, workerId, leaseSeconds = 90) {
+    await ensureTables();
+    const { results } = await dbUtils.query({
+        sql: `UPDATE agent_task
+              SET heartbeat_at = NOW(), lock_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND), update_time = NOW()
+              WHERE id = ? AND status = 'running' AND locked_by = ?`,
+        values: [safeLeaseSeconds(leaseSeconds), id, workerId],
+    });
+    return Number(results.affectedRows || 0) === 1;
+}
+
+async function releaseClaim(id, workerId, updates = {}) {
+    await ensureTables();
+    const columnMap = {
+        status: "status",
+        context: "context_json",
+        pendingAction: "pending_action_json",
+        result: "result_json",
+        lastError: "last_error",
+        nextRetryAt: "next_retry_at",
+        completedAt: "completed_at",
+    };
+    const jsonFields = new Set(["context", "pendingAction", "result"]);
+    const assignments = ["locked_by = NULL", "lock_expires_at = NULL", "heartbeat_at = NULL"];
+    const values = [];
+    Object.entries(updates).forEach(([key, value]) => {
+        if (!columnMap[key]) return;
+        assignments.push(`${columnMap[key]} = ?`);
+        values.push(jsonFields.has(key) ? serialize(value) : value);
+    });
+    values.push(id, workerId);
+    await dbUtils.query({
+        sql: `UPDATE agent_task SET ${assignments.join(", ")}, update_time = NOW() WHERE id = ? AND locked_by = ?`,
         values,
     });
     return getTask(id);
@@ -219,11 +346,15 @@ async function addEvent(taskId, event) {
 
 module.exports = {
     addEvent,
+    claimApproval,
+    claimTask,
     createTask,
     ensureTables,
     getTask,
     getTaskWithEvents,
+    heartbeatTask,
     listRunnableTasks,
     listTasks,
+    releaseClaim,
     updateTask,
 };

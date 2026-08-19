@@ -1415,3 +1415,23 @@
         height: 44px;
     }
 }
+
+@media (max-width: 420px) {
+    #app .home-masthead {
+        min-height: 104px;
+        padding: 26px 0 16px;
+    }
+
+    #app .home-masthead h1 {
+        white-space: nowrap;
+        font-size: clamp(27px, 8.7vw, 36px);
+        letter-spacing: 0;
+    }
+
+    #app .masthead-doodle {
+        flex: 0 0 44px;
+        width: 44px;
+        height: 44px;
+        font-size: 44px;
+    }
+}

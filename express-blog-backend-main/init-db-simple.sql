@@ -1,5 +1,8 @@
 -- 简化版数据库初始化脚本
 
+-- Docker 初始化客户端可能继承 latin1；显式声明，避免中文种子数据被写成乱码。
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 -- 创建数据库
 CREATE DATABASE IF NOT EXISTS blog DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -15,6 +18,7 @@ CREATE TABLE IF NOT EXISTS user (
   avatar VARCHAR(255) DEFAULT NULL,
   email VARCHAR(100) DEFAULT NULL,
   intro TEXT,
+  role VARCHAR(20) NOT NULL DEFAULT 'user' COMMENT '用户角色：admin/user',
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -88,6 +92,7 @@ CREATE TABLE IF NOT EXISTS article_tag (
 CREATE TABLE IF NOT EXISTS comments (
   id INT(11) NOT NULL AUTO_INCREMENT,
   article_id INT(11) DEFAULT NULL,
+  author_id INT(11) DEFAULT NULL,
   content TEXT NOT NULL,
   nick_name VARCHAR(100) NOT NULL,
   site_url VARCHAR(255) DEFAULT NULL,
@@ -99,13 +104,16 @@ CREATE TABLE IF NOT EXISTS comments (
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY article_id (article_id),
-  CONSTRAINT comments_ibfk_1 FOREIGN KEY (article_id) REFERENCES article (id) ON DELETE CASCADE ON UPDATE CASCADE
+  KEY author_id (author_id),
+  CONSTRAINT comments_ibfk_1 FOREIGN KEY (article_id) REFERENCES article (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT comments_ibfk_2 FOREIGN KEY (author_id) REFERENCES user (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 创建回复表
 CREATE TABLE IF NOT EXISTS reply (
   id INT(11) NOT NULL AUTO_INCREMENT,
   article_id INT(11) DEFAULT NULL,
+  author_id INT(11) DEFAULT NULL,
   comment_id INT(11) NOT NULL,
   content TEXT NOT NULL,
   nick_name VARCHAR(100) NOT NULL,
@@ -118,14 +126,57 @@ CREATE TABLE IF NOT EXISTS reply (
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY article_id (article_id),
+  KEY author_id (author_id),
   KEY comment_id (comment_id),
   CONSTRAINT reply_ibfk_1 FOREIGN KEY (article_id) REFERENCES article (id) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT reply_ibfk_2 FOREIGN KEY (comment_id) REFERENCES comments (id) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT reply_ibfk_2 FOREIGN KEY (comment_id) REFERENCES comments (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT reply_ibfk_3 FOREIGN KEY (author_id) REFERENCES user (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 创建轮播图表
+CREATE TABLE IF NOT EXISTS banner (
+  id INT(11) NOT NULL AUTO_INCREMENT,
+  url VARCHAR(1024) NOT NULL,
+  title VARCHAR(255) DEFAULT NULL,
+  type TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1: PC, 2: 小程序',
+  sort_order INT(11) NOT NULL DEFAULT 0,
+  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_banner_type_sort (type, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 创建用户关注表
+CREATE TABLE IF NOT EXISTS user_follow (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  follower_id INT NOT NULL,
+  following_id INT NOT NULL,
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_user_follow (follower_id, following_id),
+  KEY idx_user_follow_following (following_id),
+  KEY idx_user_follow_follower (follower_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 创建用户私信表
+CREATE TABLE IF NOT EXISTS user_direct_message (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  sender_id INT NOT NULL,
+  receiver_id INT NOT NULL,
+  content TEXT NOT NULL,
+  read_time DATETIME NULL,
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_direct_message_sender (sender_id),
+  KEY idx_direct_message_receiver (receiver_id),
+  KEY idx_direct_message_pair_time (sender_id, receiver_id, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 插入管理员用户
 INSERT INTO user (username, password, nick_name, email, intro) VALUES
 ('admin', '$2b$10$e3q3QZ9V8Q0e3q3QZ9V8Qe3q3QZ9V8Qe3q3QZ9V8Qe3q3QZ9V8Qe', '管理员', 'admin@example.com', '网站管理员');
+
+UPDATE user SET role = 'admin' WHERE username = 'admin';
 
 -- 插入默认分类
 INSERT INTO category (category_name) VALUES

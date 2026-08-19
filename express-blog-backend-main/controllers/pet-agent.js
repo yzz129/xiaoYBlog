@@ -107,7 +107,7 @@ router.post("/tasks/:id/messages", async (req, res) => {
             attachments: [...(task.context?.attachments || []), ...attachments].slice(-6),
             observations: [...(task.context?.observations || []), { tool: "user_instruction", summary: content, data: { content } }],
         };
-        await store.updateTask(task.id, { context, status: "queued", lastError: "" });
+        await store.updateTask(task.id, { context, status: "queued", nextRetryAt: null, lastError: "" });
         await store.addEvent(task.id, { type: "message", title: "你补充了要求", content, status: "completed" });
         runtime.kick(task.id);
         res.send({ code: "0", data: await store.getTaskWithEvents(task.id, userId(req)) });
@@ -143,7 +143,7 @@ router.post("/tasks/:id/resume", async (req, res) => {
     try {
         const task = await store.getTask(req.params.id, userId(req));
         if (!task) return sendError(res, "任务不存在", "016404");
-        await store.updateTask(task.id, { status: "queued", lastError: "" });
+        await store.updateTask(task.id, { status: "queued", nextRetryAt: null, lastError: "" });
         await store.addEvent(task.id, { type: "status", title: "任务已继续", content: "小Y 将从保存的进度继续", status: "running" });
         runtime.kick(task.id);
         res.send({ code: "0", data: await store.getTaskWithEvents(task.id, userId(req)) });

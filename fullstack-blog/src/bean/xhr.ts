@@ -54,22 +54,22 @@ export interface CommonResponse<T = unknown> {
     code: string;
     extra?: PlainObject | null;
     msg?: string;
-    data?: T | T[];
+    data?: T;
 }
 
-export interface ArrayResponse<T extends RecordDTO> extends CommonResponse {
+export interface ArrayResponse<T extends RecordDTO> extends CommonResponse<T[]> {
     data: T[];
 }
 
-export interface PageResponse<T extends RecordDTO> extends CommonResponse {
+export interface PageResponse<T extends RecordDTO> extends CommonResponse<T[]> {
     data: T[];
     total: number;
 }
 
-export interface RecordResponse<T extends RecordDTO | null> extends CommonResponse {
+export interface RecordResponse<T> extends CommonResponse<T> {
     data: T;
 }
 
-export interface PlainResponse<T extends PrimitiveType> extends CommonResponse {
+export interface PlainResponse<T extends PrimitiveType> extends CommonResponse<T> {
     data: T;
 }

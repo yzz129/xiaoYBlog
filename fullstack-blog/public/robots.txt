@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /backend/
+Disallow: /me
+Disallow: /login
+Disallow: /search
+Disallow: /jumpout/
+
+Sitemap: https://blog.wbjiang.cn/sitemap.xml

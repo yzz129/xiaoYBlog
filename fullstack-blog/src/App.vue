@@ -14,8 +14,6 @@ import zhCN from "ant-design-vue/es/locale/zh_CN";
 
 import { useRoute } from "vue-router";
 
-import { ConfigProvider } from "ant-design-vue";
-
 import { eventBus } from "./utils/eventbus";
 
 import { useStore } from "@/stores";

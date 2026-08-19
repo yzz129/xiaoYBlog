@@ -31,8 +31,6 @@ import { reactive, ref, watch } from "vue";
 
 import { LocationQuery, useRoute, useRouter } from "vue-router";
 
-import { Breadcrumb, Divider, Pagination } from "ant-design-vue";
-
 import { ArticleDTO } from "@/bean/dto";
 
 import { articleService } from "@/services/article";

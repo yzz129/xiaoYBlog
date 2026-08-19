@@ -9,9 +9,6 @@ import router from "./router";
 import { createPinia } from "pinia";
 import globalComponents from "./components";
 import "ant-design-vue/dist/reset.css";
-import "element-plus/theme-chalk/base.css";
-import "element-plus/theme-chalk/el-image.css";
-import "element-plus/theme-chalk/el-scrollbar.css";
 
 const app = createApp(App);
 const pinia = createPinia();

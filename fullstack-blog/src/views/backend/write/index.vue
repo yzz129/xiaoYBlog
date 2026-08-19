@@ -185,7 +185,7 @@
                         >
                         </a-input>
                     </div>
-                    <el-image :src="formModel.poster" class="articlePoster" fit="cover" />
+                    <img v-if="formModel.poster" :src="formModel.poster" class="articlePoster" alt="文章封面预览" decoding="async" />
                 </a-form-item>
                 <a-form-item name="articleTitle" label="文章标题">
                     <a-input class="input-simple" v-model:value="formModel.articleTitle" placeholder="请输入标题"> </a-input>

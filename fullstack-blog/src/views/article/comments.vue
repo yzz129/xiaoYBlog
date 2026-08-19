@@ -7,7 +7,7 @@
             </a-button>
         </div>
 
-        <el-scrollbar height="100%" @end-reached="handleEndReached" :distance="50">
+        <div class="comments__scroll" @scroll.passive="handleScroll">
             <ul v-if="comments.length > 0" class="comments__list">
                 <li v-for="comment in comments" :key="comment.id">
                     <CardComment
@@ -33,7 +33,7 @@
             <BottomTips v-else-if="comments.length > 0">
                 <a-button shape="round" type="primary" @click="loadMore">加载更多</a-button>
             </BottomTips>
-        </el-scrollbar>
+        </div>
 
         <div v-if="!placeTop" class="leave-comment">
             <a-input ref="commentInputRef" v-model:value="content" :placeholder="`发表${topic}`" />
@@ -121,8 +121,10 @@ const loadMore = () => {
     getComments(true);
 };
 
-const handleEndReached = () => {
-    if (props.autoLoad) {
+const handleScroll = (event: Event) => {
+    const container = event.currentTarget as HTMLElement;
+    const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (props.autoLoad && distanceToBottom <= 50) {
         loadMore();
     }
 };
@@ -188,6 +190,12 @@ defineExpose({
 .comments__body {
     flex: 1;
     padding: 20px;
+}
+
+.comments__scroll {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
 }
 
 .comments__list {

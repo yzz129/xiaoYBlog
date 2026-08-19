@@ -5,7 +5,7 @@
 ## 技术栈
 
 - Express
-- MySQL / mysql2
+- MySQL（mysql2 连接池）
 - Redis
 - Socket.IO
 - MinIO

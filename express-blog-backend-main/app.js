@@ -5,7 +5,6 @@ const logger = require('morgan');
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
 const helmet = require('helmet')
-// const compression = require('compression');
 const routeMiddleware = require('./routes/index');
 const { startWs } = require('./utils/ws');
 const config = require("./config");
@@ -42,8 +41,6 @@ const sessionMiddleware = session({
   rolling: true,
 });
 
-// 如果使用Nginx，则在nginx处理gzip即可
-// app.use(compression());
 // 完善http头部，提高安全性
 app.use(helmet());
 // session 中间件

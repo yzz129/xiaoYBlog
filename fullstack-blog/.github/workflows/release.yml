@@ -26,29 +26,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set node version to 16
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 16
-
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
-
-      - uses: actions/cache@v4
-        id: yarn-cache # use this to check for `cache-hit` (`steps.yarn-cache.outputs.cache-hit != 'true'`)
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
+          node-version: 20
+          cache: npm
       
       - name: Install Dependency
         run: |
-          yarn
+          npm ci
         
       - name: Create Release
         run: |
           git config --global user.email "cumtrobin@163.com"
           git config --global user.name "cumt-robin"
-          yarn create-release
+          npm run create-release

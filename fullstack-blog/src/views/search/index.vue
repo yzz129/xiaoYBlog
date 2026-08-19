@@ -11,20 +11,20 @@
                 <button
                     type="button"
                     class="search-switch__btn"
-                    :class="{ 'search-switch__btn--active': activeTab === 'users' }"
-                    @click="switchTab('users')"
-                >
-                    用户
-                    <span>{{ userState.total }}</span>
-                </button>
-                <button
-                    type="button"
-                    class="search-switch__btn"
                     :class="{ 'search-switch__btn--active': activeTab === 'articles' }"
                     @click="switchTab('articles')"
                 >
                     文章
                     <span>{{ articleState.total }}</span>
+                </button>
+                <button
+                    type="button"
+                    class="search-switch__btn"
+                    :class="{ 'search-switch__btn--active': activeTab === 'users' }"
+                    @click="switchTab('users')"
+                >
+                    用户
+                    <span>{{ userState.total }}</span>
                 </button>
             </div>
 
@@ -102,7 +102,7 @@ interface SearchState<T> {
     hasMore: boolean;
 }
 
-const createSearchState = <T>(): SearchState<T> => ({
+const createSearchState = <T,>(): SearchState<T> => ({
     list: [],
     pageNo: 1,
     total: 0,
@@ -122,9 +122,9 @@ const userState = reactive<SearchState<UserDTO>>(createSearchState<UserDTO>());
 const articleState = reactive<SearchState<ArticleDTO>>(createSearchState<ArticleDTO>());
 
 const keyword = computed(() => String(route.query.q || "").trim());
-const activeTab = computed<SearchTab>(() => (route.query.tab === "articles" ? "articles" : "users"));
+const activeTab = computed<SearchTab>(() => (route.query.tab === "users" ? "users" : "articles"));
 
-const resetState = <T>(state: SearchState<T>) => {
+const resetState = <T,>(state: SearchState<T>) => {
     state.list = [];
     state.pageNo = 1;
     state.total = 0;

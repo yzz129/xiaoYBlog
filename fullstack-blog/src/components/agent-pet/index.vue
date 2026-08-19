@@ -1,17 +1,77 @@
 <template>
     <teleport to="body">
-        <button
-            v-if="visible"
+        <div
+            v-if="visible && !petHidden"
+            ref="launcherRef"
             class="pet-launcher"
-            :class="{ 'pet-launcher--busy': hasRunningTask, 'pet-launcher--open': isOpen }"
-            type="button"
-            aria-label="打开小Y Agent"
-            @click="toggleDrawer"
+            :class="{
+                'pet-launcher--busy': hasRunningTask,
+                'pet-launcher--open': isOpen,
+                'pet-launcher--dragging': isDragging,
+                'pet-launcher--bubble-right': bubbleOpensRight,
+                [`pet-launcher--motion-${petMotion}`]: true,
+            }"
+            :style="launcherStyle"
         >
-            <span v-if="hasRunningTask" class="pet-launcher__status" aria-hidden="true"></span>
-            <img :src="mascot" alt="" />
-            <span class="pet-launcher__bubble">{{ launcherText }}</span>
-        </button>
+            <transition name="pet-bubble">
+                <aside v-if="bubbleVisible && !isOpen" class="pet-launcher__bubble" aria-live="polite" @pointerdown.stop>
+                    <div class="pet-bubble__topline">
+                        <span :class="['status-dot', `status-dot--${launcherTone}`]"></span>
+                        <span>{{ launcherStatus }}</span>
+                        <button type="button" aria-label="收起提示气泡" title="收起气泡" @click.stop="hideBubble">×</button>
+                    </div>
+                    <strong>{{ launcherTitle }}</strong>
+                    <p>{{ launcherHint }}</p>
+                    <div v-if="launcherProgress.total" class="pet-bubble__progress">
+                        <div><span>任务进度</span><b>{{ launcherProgress.completed }}/{{ launcherProgress.total }}</b></div>
+                        <i><span :style="{ width: `${launcherProgress.percent}%` }"></span></i>
+                    </div>
+                    <div class="pet-bubble__footer">
+                        <span>按住小Y可拖动</span>
+                        <button type="button" @click.stop="hidePet">隐藏小Y</button>
+                    </div>
+                </aside>
+            </transition>
+
+            <button
+                class="pet-launcher__orb"
+                type="button"
+                aria-label="打开小Y Agent；按住可以拖动"
+                title="点击打开，按住拖动"
+                @click="handleLauncherClick"
+                @pointerdown="startDrag"
+                @pointermove="moveDrag"
+                @pointerup="endDrag"
+                @pointercancel="endDrag"
+                @mouseenter="startHoverMotion"
+                @mouseleave="endHoverMotion"
+            >
+                <span class="pet-launcher__aura" aria-hidden="true"></span>
+                <span class="pet-launcher__shadow" aria-hidden="true"></span>
+                <span class="pet-launcher__spark pet-launcher__spark--one" aria-hidden="true"></span>
+                <span class="pet-launcher__spark pet-launcher__spark--two" aria-hidden="true"></span>
+                <span class="pet-launcher__spark pet-launcher__spark--three" aria-hidden="true"></span>
+                <span v-if="hasRunningTask" class="pet-launcher__status" aria-hidden="true"></span>
+                <img :src="mascot" alt="" draggable="false" />
+            </button>
+            <button
+                v-if="!bubbleVisible && !isOpen"
+                class="pet-launcher__bubble-toggle"
+                type="button"
+                aria-label="显示小Y的任务提示"
+                title="显示任务提示"
+                @click.stop="showBubble"
+            >
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v10H9l-4 3v-13Z" /></svg>
+            </button>
+        </div>
+
+        <transition name="pet-recall">
+            <button v-if="visible && petHidden" class="pet-recall" type="button" aria-label="召回小Y Agent" @click="showPet">
+                <img :src="mascot" alt="" />
+                <span>召回小Y</span>
+            </button>
+        </transition>
 
         <transition name="agent-fade">
             <button v-if="isOpen" class="agent-backdrop" type="button" aria-label="关闭小Y Agent" @click="closeDrawer"></button>
@@ -28,7 +88,7 @@
                         </div>
                     </div>
                     <div class="agent-header__actions">
-                        <button type="button" title="新任务" aria-label="新任务" @click="startNewTask">
+                        <button v-if="authenticated || preview" type="button" title="新任务" aria-label="新任务" @click="startNewTask">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                         </button>
                         <button type="button" title="关闭" aria-label="关闭" @click="closeDrawer">
@@ -37,6 +97,7 @@
                     </div>
                 </header>
 
+                <template v-if="authenticated || preview">
                 <div v-if="tasks.length" class="task-rail" aria-label="最近任务">
                     <button
                         v-for="task in tasks.slice(0, 6)"
@@ -78,18 +139,23 @@
                         <section v-if="activeTask.context?.plan?.length" class="plan-block">
                             <div class="section-title">
                                 <h3>执行计划</h3>
-                                <span>{{ completedStepCount }}/{{ actionableEvents.length || activeTask.context.plan.length }}</span>
+                                <span>{{ completedStepCount }}/{{ normalizedPlan.length }}</span>
                             </div>
                             <ol class="plan-list">
-                                <li v-for="event in actionableEvents" :key="event.id" :class="`plan-list__item--${event.status}`">
+                                <li v-for="step in normalizedPlan" :key="step.id" :class="`plan-list__item--${step.status}`">
                                     <span class="plan-list__marker">
-                                        <svg v-if="event.status === 'completed'" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 12 3 3 7-7" /></svg>
-                                        <span v-else-if="event.status === 'running'" class="working-dots"><i></i><i></i><i></i></span>
+                                        <svg v-if="step.status === 'completed'" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 12 3 3 7-7" /></svg>
+                                        <span v-else-if="step.status === 'running'" class="working-dots"><i></i><i></i><i></i></span>
+                                        <span v-else-if="step.status === 'failed'">!</span>
+                                        <span v-else-if="step.status === 'skipped'">–</span>
                                         <span v-else></span>
                                     </span>
                                     <div>
-                                        <strong>{{ event.title }}</strong>
-                                        <p v-if="event.content && event.status !== 'running'">{{ event.content }}</p>
+                                        <strong>{{ step.title }}</strong>
+                                        <p v-if="step.status === 'waiting'">等待你的确认或补充信息</p>
+                                        <p v-else-if="step.retryAt">将在 {{ formatSchedule(step.retryAt) }} 自动重试</p>
+                                        <p v-else-if="step.error">{{ step.error }}</p>
+                                        <p v-else-if="step.summary && step.status !== 'running'">{{ step.summary }}</p>
                                     </div>
                                 </li>
                             </ol>
@@ -175,6 +241,18 @@
                     </div>
                     <p v-else class="composer-hint">Enter 发送 · 发布与覆盖操作会先征求你的确认</p>
                 </footer>
+                </template>
+
+                <main v-else class="agent-content agent-content--guest">
+                    <div class="guest-gate">
+                        <div class="guest-gate__art"><img :src="mascot" alt="小Y" /></div>
+                        <span>AI 任务助手</span>
+                        <h3>登录后，把任务交给我</h3>
+                        <p>我可以搜索博客、查找作者、关注用户、整理资料、撰写和编辑文章，也可以按指定时间自动执行。</p>
+                        <button type="button" @click="goToLogin">登录并开始使用</button>
+                        <small>涉及发布、覆盖等操作时，我会先征求你的确认。</small>
+                    </div>
+                </main>
             </aside>
         </transition>
 
@@ -190,13 +268,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { message } from "ant-design-vue";
+import { useRouter } from "vue-router";
 
 import mascot from "@/assets/illustrations/empty-mascot.webp";
-import { PetTask, PetTaskEvent, PetTaskStatus, petAgentService } from "@/services/pet-agent";
+import { PetTask, PetTaskStatus, petAgentService } from "@/services/pet-agent";
 
-const props = withDefaults(defineProps<{ visible: boolean; preview?: boolean }>(), { preview: false });
+const props = withDefaults(defineProps<{ visible: boolean; preview?: boolean; authenticated?: boolean }>(), { preview: false, authenticated: true });
+const router = useRouter();
 
 const isOpen = ref(false);
 const tasks = ref<PetTask[]>([]);
@@ -209,12 +289,31 @@ const draftVisible = ref(false);
 const attachmentEnabled = ref(false);
 const attachmentUrl = ref("");
 const scrollArea = ref<HTMLElement | null>(null);
+const launcherRef = ref<HTMLElement | null>(null);
+const launcherPosition = ref<{ x: number; y: number } | null>(null);
+const viewportWidth = ref(0);
+const bubbleVisible = ref(true);
+const petHidden = ref(false);
+const isDragging = ref(false);
+type PetMotion = "idle" | "hop" | "peek" | "wiggle" | "float" | "wave";
+const petMotion = ref<PetMotion>("idle");
 let pollTimer: number | null = null;
+let motionTimer: number | null = null;
+let motionResetTimer: number | null = null;
+let bubbleTimer: number | null = null;
+let dragState: { pointerId: number; startX: number; startY: number; originX: number; originY: number } | null = null;
+let suppressLauncherClick = false;
+let isHoveringPet = false;
+
+const POSITION_KEY = "xiaoy-agent-position-v1";
+const BUBBLE_KEY = "xiaoy-agent-bubble-visible-v1";
+const HIDDEN_KEY = "xiaoy-agent-hidden-v1";
+const LAUNCHER_SIZE = 86;
+const VIEWPORT_PADDING = 12;
 
 const terminalStatuses: PetTaskStatus[] = ["completed", "failed", "cancelled"];
 const terminalStatus = computed(() => Boolean(activeTask.value && terminalStatuses.includes(activeTask.value.status)));
 const hasRunningTask = computed(() => tasks.value.some((task) => ["running", "queued", "waiting_approval"].includes(task.status)));
-const launcherText = computed(() => hasRunningTask.value ? "任务进行中" : "交给我吧");
 const currentTone = computed(() => statusTone(activeTask.value?.status || (hasRunningTask.value ? "running" : "completed")));
 const currentStatusText = computed(() => statusLabel(activeTask.value?.status || (hasRunningTask.value ? "running" : "completed")));
 const draft = computed(() => activeTask.value?.context?.artifacts?.draft || activeTask.value?.result?.artifacts?.draft || null);
@@ -224,25 +323,39 @@ const minimumSchedule = computed(() => {
     return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 });
 const visibleEvents = computed(() => (activeTask.value?.events || []).filter((event) => !["message", "plan", "artifact"].includes(event.type)).slice(-8));
-const actionableEvents = computed(() => {
-    const events = (activeTask.value?.events || []).filter((event) => ["tool", "tool_result", "approval", "approval_required", "result"].includes(event.type));
-    const output: PetTaskEvent[] = [];
-    events.forEach((event) => {
-        if (event.type === "tool_result") {
-            const runningIndex = [...output].reverse().findIndex((item) => item.status === "running");
-            if (runningIndex >= 0) {
-                const index = output.length - 1 - runningIndex;
-                output[index] = { ...output[index], title: event.title, content: event.content, status: event.status };
-            } else output.push(event);
-        } else if (event.type === "approval") {
-            const waitingIndex = [...output].reverse().findIndex((item) => item.status === "waiting");
-            if (waitingIndex >= 0) output[output.length - 1 - waitingIndex] = event;
-            else output.push(event);
-        } else output.push(event);
-    });
-    return output.slice(-10);
+const normalizedPlan = computed(() => (activeTask.value?.context?.plan || []).map((step, index) => {
+    if (typeof step === "string") return { id: `legacy_${index}`, title: step, status: "pending" as const, summary: "", error: "", retryAt: null };
+    return step;
+}));
+const completedStepCount = computed(() => normalizedPlan.value.filter((step) => ["completed", "skipped"].includes(step.status)).length);
+const launcherTask = computed(() => activeTask.value || tasks.value.find((task) => !terminalStatuses.includes(task.status)) || tasks.value[0] || null);
+const launcherPlan = computed(() => (launcherTask.value?.context?.plan || []).map((step, index) => {
+    if (typeof step === "string") return { id: `legacy_${index}`, title: step, status: "pending" as const };
+    return step;
+}));
+const launcherProgress = computed(() => {
+    const total = launcherPlan.value.length;
+    const completed = launcherPlan.value.filter((step) => ["completed", "skipped"].includes(step.status)).length;
+    return { total, completed, percent: total ? Math.round((completed / total) * 100) : 0 };
 });
-const completedStepCount = computed(() => actionableEvents.value.filter((event) => event.status === "completed").length);
+const launcherTone = computed(() => statusTone(launcherTask.value?.status || "completed"));
+const launcherStatus = computed(() => props.authenticated || props.preview ? statusLabel(launcherTask.value?.status || "completed") : "登录后开始工作");
+const launcherTitle = computed(() => props.authenticated || props.preview ? (launcherTask.value?.title || "你好，我是小Y") : "你好，我是小Y");
+const launcherHint = computed(() => {
+    if (!props.authenticated && !props.preview) return "点我看看能为你完成哪些任务。";
+    if (!launcherTask.value) return "点我打开聊天框，交给我一个任务吧。";
+    if (launcherTask.value.status === "waiting_approval") return "任务需要你的确认，点我继续。";
+    if (launcherTask.value.status === "waiting_input") return "我还需要一点信息，点我补充。";
+    if (launcherTask.value.status === "failed") return launcherTask.value.lastError || "任务遇到问题，点我查看详情。";
+    if (launcherTask.value.status === "completed") return launcherTask.value.result?.summary || "任务已完成，点我查看结果。";
+    if (launcherTask.value.status === "scheduled" && launcherTask.value.scheduledAt) return `将在 ${formatSchedule(launcherTask.value.scheduledAt)} 自动开始。`;
+    const runningStep = launcherPlan.value.find((step) => step.status === "running" || step.status === "waiting");
+    return runningStep ? `正在处理：${runningStep.title}` : "我正在自主执行，完成后会告诉你。";
+});
+const launcherStyle = computed(() => launcherPosition.value
+    ? { left: `${launcherPosition.value.x}px`, top: `${launcherPosition.value.y}px`, right: "auto", bottom: "auto" }
+    : undefined);
+const bubbleOpensRight = computed(() => Boolean(launcherPosition.value && launcherPosition.value.x < viewportWidth.value / 2));
 
 function statusTone(status: PetTaskStatus | string) {
     if (["running", "queued"].includes(status)) return "running";
@@ -299,9 +412,20 @@ function useExample() {
 async function submitMessage() {
     const content = messageText.value.trim();
     if (!content || submitting.value) return;
+    if (scheduleEnabled.value) {
+        const scheduleTime = new Date(scheduledAt.value).getTime();
+        if (!scheduledAt.value || !Number.isFinite(scheduleTime)) {
+            message.warning("请先选择任务执行时间");
+            return;
+        }
+        if (scheduleTime < Date.now() + 4 * 60 * 1000) {
+            message.warning("执行时间至少需要晚于现在 5 分钟");
+            return;
+        }
+    }
     submitting.value = true;
     try {
-        const attachments = attachmentUrl.value.trim()
+        const attachments = attachmentEnabled.value && attachmentUrl.value.trim()
             ? [{ type: "image" as const, url: attachmentUrl.value.trim(), name: "用户提供的图片" }]
             : [];
         if (attachments.length && !/^https?:\/\//i.test(attachments[0].url)) {
@@ -390,19 +514,190 @@ async function cancelTask() { if (activeTask.value) activeTask.value = props.pre
 
 async function toggleDrawer() {
     isOpen.value = !isOpen.value;
-    if (isOpen.value && !props.preview) await loadTasks(true);
+    if (isOpen.value && props.authenticated && !props.preview) await loadTasks(true);
 }
 function closeDrawer() { isOpen.value = false; }
+function goToLogin() { closeDrawer(); router.push({ name: "Login" }); }
+
+function clampPosition(x: number, y: number) {
+    const width = launcherRef.value?.offsetWidth || LAUNCHER_SIZE;
+    const height = launcherRef.value?.offsetHeight || LAUNCHER_SIZE;
+    return {
+        x: Math.min(Math.max(x, VIEWPORT_PADDING), Math.max(VIEWPORT_PADDING, window.innerWidth - width - VIEWPORT_PADDING)),
+        y: Math.min(Math.max(y, VIEWPORT_PADDING), Math.max(VIEWPORT_PADDING, window.innerHeight - height - VIEWPORT_PADDING)),
+    };
+}
+
+function persistPosition() {
+    if (launcherPosition.value) localStorage.setItem(POSITION_KEY, JSON.stringify(launcherPosition.value));
+}
+
+function startDrag(event: PointerEvent) {
+    if (event.button !== 0 || !launcherRef.value) return;
+    const rect = launcherRef.value.getBoundingClientRect();
+    clearMotionTimers();
+    petMotion.value = "idle";
+    dragState = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: rect.left, originY: rect.top };
+    if (event.currentTarget instanceof HTMLElement) event.currentTarget.setPointerCapture(event.pointerId);
+}
+
+function moveDrag(event: PointerEvent) {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+    if (!isDragging.value && Math.hypot(deltaX, deltaY) < 5) return;
+    isDragging.value = true;
+    suppressLauncherClick = true;
+    launcherPosition.value = clampPosition(dragState.originX + deltaX, dragState.originY + deltaY);
+}
+
+function endDrag(event: PointerEvent) {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    if (isDragging.value) persistPosition();
+    if (event.currentTarget instanceof HTMLElement && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    dragState = null;
+    isDragging.value = false;
+    schedulePetMotion();
+}
+
+async function handleLauncherClick() {
+    if (suppressLauncherClick) {
+        suppressLauncherClick = false;
+        return;
+    }
+    playPetMotion("hop", 760);
+    await toggleDrawer();
+}
+
+function clearMotionTimers() {
+    if (motionTimer) window.clearTimeout(motionTimer);
+    if (motionResetTimer) window.clearTimeout(motionResetTimer);
+    motionTimer = null;
+    motionResetTimer = null;
+}
+
+function playPetMotion(motion: PetMotion, duration = 1100) {
+    if (isDragging.value) return;
+    if (motionResetTimer) window.clearTimeout(motionResetTimer);
+    petMotion.value = motion;
+    motionResetTimer = window.setTimeout(() => {
+        petMotion.value = isHoveringPet ? "wave" : "idle";
+        motionResetTimer = null;
+    }, duration);
+}
+
+function schedulePetMotion() {
+    if (motionTimer) window.clearTimeout(motionTimer);
+    const delay = 3200 + Math.round(Math.random() * 4200);
+    motionTimer = window.setTimeout(() => {
+        if (!isOpen.value && !petHidden.value && !isDragging.value && !isHoveringPet) {
+            const motions: PetMotion[] = ["hop", "peek", "wiggle", "float"];
+            playPetMotion(motions[Math.floor(Math.random() * motions.length)], 1150);
+        }
+        schedulePetMotion();
+    }, delay);
+}
+
+function startHoverMotion() {
+    isHoveringPet = true;
+    playPetMotion("wave", 1600);
+}
+
+function endHoverMotion() {
+    isHoveringPet = false;
+    petMotion.value = "idle";
+}
+
+function hideBubble() {
+    clearBubbleTimer();
+    bubbleVisible.value = false;
+    localStorage.setItem(BUBBLE_KEY, "false");
+}
+
+function showBubble() {
+    bubbleVisible.value = true;
+    localStorage.setItem(BUBBLE_KEY, "true");
+    scheduleBubbleAutoHide();
+}
+
+function hidePet() {
+    clearBubbleTimer();
+    petHidden.value = true;
+    isOpen.value = false;
+    localStorage.setItem(HIDDEN_KEY, "true");
+}
+
+function showPet() {
+    petHidden.value = false;
+    bubbleVisible.value = true;
+    localStorage.setItem(HIDDEN_KEY, "false");
+    localStorage.setItem(BUBBLE_KEY, "true");
+    scheduleBubbleAutoHide();
+}
+
+function clearBubbleTimer() {
+    if (bubbleTimer) window.clearTimeout(bubbleTimer);
+    bubbleTimer = null;
+}
+
+function scheduleBubbleAutoHide() {
+    clearBubbleTimer();
+    if (window.innerWidth > 620 || hasRunningTask.value || launcherTask.value) return;
+    bubbleTimer = window.setTimeout(() => {
+        if (!isOpen.value && !hasRunningTask.value) bubbleVisible.value = false;
+        bubbleTimer = null;
+    }, 6000);
+}
+
+function handleViewportResize() {
+    viewportWidth.value = window.innerWidth;
+    if (launcherPosition.value) {
+        launcherPosition.value = clampPosition(launcherPosition.value.x, launcherPosition.value.y);
+        persistPosition();
+    }
+}
 
 onMounted(() => {
-    if (props.preview) return;
-    loadTasks().catch(() => undefined);
-    pollTimer = window.setInterval(() => {
-        if (isOpen.value && activeTask.value) loadActiveTask().catch(() => undefined);
-        else loadTasks().catch(() => undefined);
-    }, 3000);
+    viewportWidth.value = window.innerWidth;
+    bubbleVisible.value = localStorage.getItem(BUBBLE_KEY) !== "false";
+    petHidden.value = localStorage.getItem(HIDDEN_KEY) === "true";
+    try {
+        const storedPosition = localStorage.getItem(POSITION_KEY);
+        if (storedPosition) {
+            const parsed = JSON.parse(storedPosition);
+            if (Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)) launcherPosition.value = clampPosition(parsed.x, parsed.y);
+        }
+    } catch {
+        localStorage.removeItem(POSITION_KEY);
+    }
+    window.addEventListener("resize", handleViewportResize);
+    schedulePetMotion();
+    scheduleBubbleAutoHide();
+    if (props.authenticated && !props.preview) {
+        loadTasks().catch(() => undefined);
+        pollTimer = window.setInterval(() => {
+            if (isOpen.value && activeTask.value) loadActiveTask().catch(() => undefined);
+            else loadTasks().catch(() => undefined);
+        }, 3000);
+    }
 });
-onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer); });
+onBeforeUnmount(() => {
+    if (pollTimer) window.clearInterval(pollTimer);
+    clearMotionTimers();
+    clearBubbleTimer();
+    window.removeEventListener("resize", handleViewportResize);
+});
+
+watch(
+    () => launcherTask.value?.status,
+    (status, previousStatus) => {
+        if (!status || !previousStatus || status === previousStatus) return;
+        if (["waiting_approval", "waiting_input", "completed", "failed"].includes(status)) {
+            bubbleVisible.value = true;
+            clearBubbleTimer();
+        }
+    }
+);
 </script>
 
 <style lang="scss" scoped>
@@ -416,13 +711,58 @@ $coral: #ff766f;
 $yellow: #ffbf2f;
 
 button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sans-serif); }
-.pet-launcher { position: fixed; right: 26px; bottom: 24px; z-index: 1100; width: 86px; height: 86px; border: 0; background: transparent; cursor: pointer; padding: 0; filter: drop-shadow(0 10px 16px rgba(12, 41, 79, .16)); transition: transform .22s ease; }
-.pet-launcher:hover { transform: translateY(-5px) rotate(-2deg); }
+.pet-launcher { position: fixed; right: 26px; bottom: 24px; z-index: 1100; width: 86px; height: 86px; transition: transform .22s ease, opacity .2s ease; }
 .pet-launcher--open { transform: translateX(-430px); }
-.pet-launcher img { width: 100%; height: 100%; object-fit: contain; }
+.pet-launcher__orb { position: relative; width: 100%; height: 100%; overflow: visible; border: 0; background: transparent; cursor: grab; padding: 0; filter: drop-shadow(0 10px 16px rgba(12, 41, 79, .16)); touch-action: none; user-select: none; transition: transform .22s ease, filter .22s ease; }
+.pet-launcher__orb:hover { transform: translateY(-5px) rotate(-2deg); filter: drop-shadow(0 14px 20px rgba(12, 41, 79, .2)); }
+.pet-launcher--dragging { transition: none; }
+.pet-launcher--dragging .pet-launcher__orb { cursor: grabbing; transform: scale(1.06) rotate(2deg); filter: drop-shadow(0 18px 24px rgba(12, 41, 79, .24)); }
+.pet-launcher__orb img { position: relative; z-index: 2; width: 100%; height: 100%; object-fit: contain; pointer-events: none; transform-origin: 50% 82%; animation: pet-breathe 3.8s ease-in-out infinite; will-change: transform; }
+.pet-launcher__aura { position: absolute; z-index: 0; inset: 12px; border-radius: 50%; background: radial-gradient(circle, rgba(85,221,181,.2), rgba(81,185,223,.07) 48%, transparent 70%); opacity: .65; animation: pet-aura-breathe 3.8s ease-in-out infinite; }
+.pet-launcher__shadow { position: absolute; z-index: 1; left: 22%; right: 22%; bottom: 6px; height: 10px; border-radius: 50%; background: rgba(12,41,79,.16); filter: blur(5px); animation: pet-shadow-breathe 3.8s ease-in-out infinite; }
+.pet-launcher__spark { position: absolute; z-index: 4; width: 8px; height: 8px; opacity: 0; pointer-events: none; }
+.pet-launcher__spark::before { content: "✦"; position: absolute; color: $mint; font-size: 12px; line-height: 1; text-shadow: 0 2px 8px rgba(85,221,181,.35); }
+.pet-launcher__spark--one { left: 0; top: 18px; }
+.pet-launcher__spark--two { right: 1px; top: 4px; transform: scale(.75); }
+.pet-launcher__spark--three { right: -2px; bottom: 14px; transform: scale(.55); }
+.pet-launcher--motion-hop .pet-launcher__orb img { animation: pet-hop .86s cubic-bezier(.2,.8,.2,1); }
+.pet-launcher--motion-peek .pet-launcher__orb img { animation: pet-peek 1.05s ease-in-out; }
+.pet-launcher--motion-wiggle .pet-launcher__orb img { animation: pet-wiggle .95s ease-in-out; }
+.pet-launcher--motion-float .pet-launcher__orb img { animation: pet-float 1.15s ease-in-out; }
+.pet-launcher--motion-wave .pet-launcher__orb img { animation: pet-wave .8s ease-in-out 2; }
+.pet-launcher--motion-hop .pet-launcher__spark, .pet-launcher--motion-wave .pet-launcher__spark, .pet-launcher--busy .pet-launcher__spark { animation: pet-sparkle 1.05s ease-out; }
+.pet-launcher--motion-hop .pet-launcher__spark--two, .pet-launcher--motion-wave .pet-launcher__spark--two, .pet-launcher--busy .pet-launcher__spark--two { animation-delay: .13s; }
+.pet-launcher--motion-hop .pet-launcher__spark--three, .pet-launcher--motion-wave .pet-launcher__spark--three, .pet-launcher--busy .pet-launcher__spark--three { animation-delay: .28s; }
+.pet-launcher--busy .pet-launcher__aura { animation: pet-work-aura 1.25s ease-in-out infinite; }
+.pet-launcher--busy.pet-launcher--motion-idle .pet-launcher__orb img { animation: pet-work 1.45s ease-in-out infinite; }
+.pet-launcher--busy .pet-launcher__spark { animation-iteration-count: infinite; animation-duration: 1.8s; }
+.pet-launcher--dragging .pet-launcher__orb img { animation: pet-drag-grip .55s ease-in-out infinite alternate; }
+.pet-launcher--dragging .pet-launcher__shadow { transform: scaleX(.72); opacity: .5; }
 .pet-launcher__status { position: absolute; top: 8px; right: 5px; width: 13px; height: 13px; border-radius: 50%; background: $mint; border: 3px solid white; box-shadow: 0 0 0 1px rgba(12,41,79,.08); animation: pet-pulse 1.6s infinite; }
-.pet-launcher__bubble { position: absolute; right: 68px; top: 6px; white-space: nowrap; color: $navy; background: white; border: 1px solid $line; border-radius: 14px 14px 4px 14px; padding: 7px 10px; font-size: 12px; font-weight: 600; opacity: 0; transform: translateX(5px); transition: .2s ease; }
-.pet-launcher:hover .pet-launcher__bubble, .pet-launcher--busy .pet-launcher__bubble { opacity: 1; transform: none; }
+.pet-launcher__bubble { position: absolute; right: 76px; top: -24px; width: 238px; color: $navy; background: rgba(255,255,255,.97); border: 1px solid rgba(12,41,79,.1); border-radius: 18px 18px 5px 18px; padding: 12px 13px 10px; box-shadow: 0 16px 40px rgba(12,41,79,.15); backdrop-filter: blur(12px); cursor: default; }
+.pet-launcher--bubble-right .pet-launcher__bubble { right: auto; left: 76px; border-radius: 18px 18px 18px 5px; }
+.pet-bubble__topline { display: flex; align-items: center; gap: 6px; color: $muted; font-size: 11px; line-height: 1; }
+.pet-bubble__topline button { margin-left: auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #8995a7; font-size: 18px; line-height: 1; cursor: pointer; }
+.pet-bubble__topline button:hover { color: $navy; background: #edf5f3; }
+.pet-launcher__bubble > strong { display: block; margin-top: 7px; overflow: hidden; color: $navy; font-size: 13px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.pet-launcher__bubble > p { margin: 3px 0 0; color: $muted; font-size: 11px; line-height: 1.5; }
+.pet-bubble__progress { margin-top: 9px; }
+.pet-bubble__progress > div { display: flex; justify-content: space-between; color: #76859a; font-size: 10px; }
+.pet-bubble__progress b { color: $mint-dark; font-size: 10px; }
+.pet-bubble__progress > i { display: block; height: 5px; margin-top: 5px; overflow: hidden; border-radius: 99px; background: #e9f0f3; }
+.pet-bubble__progress > i span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, $mint, #51b9df); transition: width .35s ease; }
+.pet-bubble__footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; padding-top: 8px; border-top: 1px solid #edf1f5; color: #98a4b4; font-size: 9px; }
+.pet-bubble__footer button { padding: 0; border: 0; background: transparent; color: $muted; font-size: 10px; cursor: pointer; }
+.pet-bubble__footer button:hover { color: $coral; }
+.pet-launcher__bubble-toggle { position: absolute; right: 0; top: 2px; width: 27px; height: 27px; display: grid; place-items: center; padding: 0; border: 2px solid white; border-radius: 50%; background: $navy; color: white; box-shadow: 0 5px 12px rgba(12,41,79,.2); cursor: pointer; }
+.pet-launcher__bubble-toggle svg { width: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.pet-recall { position: fixed; z-index: 1100; right: 0; bottom: 34px; height: 42px; display: flex; align-items: center; gap: 4px; padding: 3px 10px 3px 3px; border: 1px solid rgba(12,41,79,.1); border-right: 0; border-radius: 22px 0 0 22px; background: rgba(255,255,255,.95); color: $navy; box-shadow: 0 10px 30px rgba(12,41,79,.13); cursor: pointer; backdrop-filter: blur(10px); }
+.pet-recall img { width: 34px; height: 34px; object-fit: contain; }
+.pet-recall span { font-size: 11px; font-weight: 600; }
+.pet-bubble-enter-active, .pet-bubble-leave-active, .pet-recall-enter-active, .pet-recall-leave-active { transition: opacity .2s ease, transform .2s ease; }
+.pet-bubble-enter-from, .pet-bubble-leave-to { opacity: 0; transform: translateX(8px) scale(.96); }
+.pet-launcher--bubble-right .pet-bubble-enter-from, .pet-launcher--bubble-right .pet-bubble-leave-to { transform: translateX(-8px) scale(.96); }
+.pet-recall-enter-from, .pet-recall-leave-to { opacity: 0; transform: translateX(100%); }
 .agent-backdrop { position: fixed; z-index: 1080; inset: 0; border: 0; background: rgba(12, 41, 79, .17); backdrop-filter: blur(1px); }
 .agent-drawer { position: fixed; z-index: 1090; top: 0; right: 0; width: 440px; height: 100dvh; display: flex; flex-direction: column; background: $paper; color: $navy; border-left: 1px solid rgba(12,41,79,.1); box-shadow: -18px 0 50px rgba(12,41,79,.13); }
 .agent-header { min-height: 78px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid $line; }
@@ -440,6 +780,16 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .agent-header__actions button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: $navy; cursor: pointer; }
 .agent-header__actions button:hover { background: #f0f8f6; }
 .agent-header__actions svg { width: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.agent-content--guest { display: grid; place-items: center; padding: 28px; }
+.guest-gate { width: 100%; max-width: 330px; text-align: center; }
+.guest-gate__art { width: 118px; height: 118px; margin: 0 auto 4px; }
+.guest-gate__art img { width: 100%; height: 100%; object-fit: contain; }
+.guest-gate > span { display: inline-flex; padding: 4px 9px; border-radius: 99px; background: #e8faf5; color: $mint-dark; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.guest-gate h3 { margin: 14px 0 8px; color: $navy; font-family: var(--xy-font-display, "Microsoft YaHei", sans-serif); font-size: 22px; }
+.guest-gate p { margin: 0; color: $muted; font-size: 13px; line-height: 1.8; }
+.guest-gate > button { width: 100%; margin-top: 22px; padding: 12px 16px; border: 0; border-radius: 12px; background: $navy; color: white; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 10px 24px rgba(12,41,79,.16); }
+.guest-gate > button:hover { background: #153b68; transform: translateY(-1px); }
+.guest-gate small { display: block; margin-top: 11px; color: #98a4b4; font-size: 10px; line-height: 1.6; }
 .task-rail { flex: 0 0 auto; display: flex; gap: 7px; overflow-x: auto; padding: 10px 16px; border-bottom: 1px solid #edf1f5; scrollbar-width: none; }
 .task-rail::-webkit-scrollbar { display: none; }
 .task-rail button { flex: 0 0 auto; max-width: 168px; display: flex; align-items: center; gap: 7px; padding: 7px 10px; color: $muted; background: white; border: 1px solid $line; border-radius: 8px; font-size: 12px; cursor: pointer; }
@@ -471,6 +821,8 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .plan-list__item--completed .plan-list__marker { background: $mint; border-color: $mint; color: $navy; }
 .plan-list__item--running .plan-list__marker { border-color: $mint; background: #effcf8; }
 .plan-list__item--waiting .plan-list__marker { border-color: $yellow; }
+.plan-list__item--failed .plan-list__marker { border-color: $coral; background: #fff3f2; color: $coral; font-weight: 700; }
+.plan-list__item--skipped { opacity: .56; }
 .plan-list__marker svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .plan-list strong, .activity-row strong { font-size: 13px; font-weight: 600; line-height: 1.5; }
 .plan-list p, .activity-row p { margin: 3px 0 0; color: $muted; font-size: 12px; line-height: 1.55; }
@@ -512,6 +864,18 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .agent-slide-enter-active, .agent-slide-leave-active { transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s; }.agent-slide-enter-from, .agent-slide-leave-to { transform: translateX(100%); opacity: .6; }
 .agent-fade-enter-active, .agent-fade-leave-active { transition: opacity .22s; }.agent-fade-enter-from, .agent-fade-leave-to { opacity: 0; }
 @keyframes pet-pulse { 50% { box-shadow: 0 0 0 7px rgba(85,221,181,0); } }
+@keyframes pet-breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.018); } }
+@keyframes pet-aura-breathe { 0%, 100% { opacity: .36; transform: scale(.88); } 50% { opacity: .78; transform: scale(1.08); } }
+@keyframes pet-shadow-breathe { 0%, 100% { opacity: .65; transform: scaleX(1); } 50% { opacity: .38; transform: scaleX(.82); } }
+@keyframes pet-hop { 0%, 100% { transform: translateY(0) scale(1); } 18% { transform: translateY(2px) scale(1.08,.92); } 48% { transform: translateY(-18px) rotate(-4deg) scale(.96,1.06); } 68% { transform: translateY(-7px) rotate(3deg); } 86% { transform: translateY(1px) scale(1.05,.95); } }
+@keyframes pet-peek { 0%, 100% { transform: translate(0,0) rotate(0); } 28%, 68% { transform: translate(-9px,-3px) rotate(-9deg); } 48% { transform: translate(-12px,-5px) rotate(-12deg) scale(1.03); } }
+@keyframes pet-wiggle { 0%, 100% { transform: rotate(0); } 18% { transform: rotate(-7deg) scale(1.03); } 36% { transform: rotate(7deg); } 54% { transform: rotate(-5deg); } 72% { transform: rotate(4deg); } }
+@keyframes pet-float { 0%, 100% { transform: translate(0,0) rotate(0); } 28% { transform: translate(5px,-9px) rotate(5deg); } 58% { transform: translate(-4px,-13px) rotate(-4deg) scale(1.03); } 82% { transform: translate(2px,-5px) rotate(2deg); } }
+@keyframes pet-wave { 0%, 100% { transform: rotate(0) translateY(0); } 25% { transform: rotate(-8deg) translateY(-5px); } 50% { transform: rotate(6deg) translateY(-7px) scale(1.025); } 75% { transform: rotate(-4deg) translateY(-3px); } }
+@keyframes pet-work { 0%, 100% { transform: translate(0,0) rotate(-2deg); } 35% { transform: translate(3px,-7px) rotate(4deg); } 70% { transform: translate(-2px,-4px) rotate(-4deg); } }
+@keyframes pet-work-aura { 0%, 100% { opacity: .42; transform: scale(.88); } 50% { opacity: .9; transform: scale(1.14); } }
+@keyframes pet-drag-grip { from { transform: translateY(0) rotate(-2deg) scale(1.02); } to { transform: translateY(-2px) rotate(2deg) scale(1.06); } }
+@keyframes pet-sparkle { 0% { opacity: 0; transform: translateY(5px) scale(.3) rotate(0); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateY(-15px) scale(1.25) rotate(55deg); } }
 @keyframes dot-wave { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-3px); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 @media (max-width: 620px) {
@@ -519,6 +883,8 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
     .agent-slide-enter-from, .agent-slide-leave-to { transform: translateY(100%); }
     .pet-launcher { right: 12px; bottom: 14px; width: 72px; height: 72px; }.pet-launcher--open { transform: translateY(-86dvh); opacity: 0; pointer-events: none; }
     .agent-header { min-height: 68px; padding: 11px 15px; }.agent-content { padding: 15px 15px 24px; }.agent-composer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-    .pet-launcher__bubble { display: none; }
+    .pet-launcher__bubble { top: -76px; right: 2px; width: min(238px, calc(100vw - 28px)); border-radius: 18px 18px 5px 18px; }
+    .pet-launcher--bubble-right .pet-launcher__bubble { right: auto; left: 2px; border-radius: 18px 18px 18px 5px; }
+    .pet-bubble__footer > span { display: none; }
 }
 </style>

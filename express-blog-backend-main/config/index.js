@@ -126,6 +126,13 @@ module.exports = {
         sameSite: process.env.AUTH_COOKIE_SAMESITE || "Lax",
         secure: toBoolean(process.env.AUTH_COOKIE_SECURE, false),
     },
+    session: {
+        secret: process.env.SESSION_SECRET || process.env.JWT_SECRET || "blog-session-development-only",
+        cookieName: process.env.SESSION_COOKIE_NAME || "blog_session",
+        sameSite: process.env.SESSION_COOKIE_SAMESITE || "Lax",
+        secure: toBoolean(process.env.SESSION_COOKIE_SECURE, false),
+        maxAgeMs: toNumber(process.env.SESSION_COOKIE_MAX_AGE_MS, 21600000),
+    },
     jwt: {
         secret: process.env.JWT_SECRET || "blog-secret-key",
         expireDays: toNumber(process.env.JWT_EXPIRE_DAYS, 3),

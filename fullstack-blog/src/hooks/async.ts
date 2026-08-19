@@ -19,6 +19,8 @@ export const useAsyncLoading = (fn: GeneralFunction<Promise<unknown>>): AsyncLoa
     const trigger = async (...args: any[]) => {
         try {
             loading.value = true;
+            isError.value = false;
+            error.value = undefined;
             await fn(...args);
         } catch (err) {
             isError.value = true;

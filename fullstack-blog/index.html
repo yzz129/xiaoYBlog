@@ -2,15 +2,85 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="小Y博客 - 一个专注于技术分享与交流的全栈博客平台，涵盖前端、后端、AI 写作等内容。" />
-    <meta name="theme-color" content="#3b77e3" />
-    <link rel="preconnect" href="http://localhost:8002" />
-    <title>小Y博客 - 技术分享交流平台</title>
+    <meta name="description" content="小Y博客专注技术分享、AI 创作与全栈开发实践，提供前端、后端、工程化与智能 Agent 等高质量中文内容。" />
+    <meta name="keywords" content="技术博客,前端开发,后端开发,全栈开发,AI 创作,智能 Agent,Vue,Node.js" />
+    <meta name="author" content="小Y博客" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="theme-color" content="#79ddbd" />
+    <meta name="color-scheme" content="light" />
+    <meta name="application-name" content="小Y博客" />
+    <meta name="apple-mobile-web-app-title" content="小Y博客" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="canonical" href="https://blog.wbjiang.cn/" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="小Y博客" />
+    <meta property="og:title" content="小Y博客｜技术分享、AI 创作与全栈开发" />
+    <meta property="og:description" content="专注技术分享、AI 创作与全栈开发实践的中文博客社区。" />
+    <meta property="og:url" content="https://blog.wbjiang.cn/" />
+    <meta property="og:image" content="https://blog.wbjiang.cn/icon-512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="小Y博客云朵吉祥物" />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="小Y博客｜技术分享、AI 创作与全栈开发" />
+    <meta name="twitter:description" content="专注技术分享、AI 创作与全栈开发实践的中文博客社区。" />
+    <meta name="twitter:image" content="https://blog.wbjiang.cn/icon-512.png" />
+    <meta name="twitter:image:alt" content="小Y博客云朵吉祥物" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://blog.wbjiang.cn/#organization",
+            "name": "小Y博客",
+            "url": "https://blog.wbjiang.cn/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://blog.wbjiang.cn/icon-512.png",
+              "width": 512,
+              "height": 512
+            }
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://blog.wbjiang.cn/#website",
+            "url": "https://blog.wbjiang.cn/",
+            "name": "小Y博客",
+            "description": "专注技术分享、AI 创作与全栈开发实践的中文博客社区。",
+            "publisher": { "@id": "https://blog.wbjiang.cn/#organization" },
+            "inLanguage": "zh-CN",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": "https://blog.wbjiang.cn/search?q={search_term_string}&tab=articles"
+              },
+              "query-input": "required name=search_term_string"
+            }
+          }
+        ]
+      }
+    </script>
+    <title>小Y博客｜技术分享、AI 创作与全栈开发</title>
   </head>
   <body>
     <div id="app"></div>
+    <noscript>小Y博客需要启用 JavaScript 才能浏览文章、分类、标签与互动功能。</noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

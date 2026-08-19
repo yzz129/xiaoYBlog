@@ -26,6 +26,14 @@ npm install
 npm start
 ```
 
+也可以一次启动后端、MySQL、Redis 和 MinIO：
+
+```bash
+docker compose up -d
+```
+
+Compose 会在容器网络内固定使用 `mysql:3306`、`redis:6379` 和 `minio:9000`，`.env` 中的同名主机地址只用于 Windows 原生启动。
+
 默认服务地址：
 
 ```text
@@ -52,6 +60,8 @@ npm run seed:demo
 
 ```bash
 npm run test:comment-reply
+npm run test:password-security
+npm run test:pet-agent
 ```
 
 覆盖范围：
@@ -60,6 +70,15 @@ npm run test:comment-reply
 - 已审核回复会出现在评论回复列表中
 - 未审核回复不会混入公开评论回复列表
 - 未审核回复会出现在审核分页接口中
+- 新账号使用随机盐 `scrypt` 保存凭证，旧 SHA-256 账号登录时会自动迁移
+- Agent 原子领取、重复执行拦截、心跳、租约释放与恢复
+
+## 认证安全
+
+- 前端仍以 SHA-256 摘要作为登录凭证，后端不会直接保存该摘要，而是再使用随机盐 `scrypt` 派生后入库。
+- 历史账号无需重置密码；第一次成功登录会在同一个数据库连接中自动升级存储格式。
+- Session 密钥、Cookie 名称、`SameSite`、`Secure` 和有效期均从环境变量读取。生产环境必须设置独立的 `SESSION_SECRET`，HTTPS 部署时设置 `SESSION_COOKIE_SECURE=true`。
+- Session Cookie 使用 `HttpOnly`，并关闭 `resave` 与匿名空 Session 保存。
 
 ## 可演示验收流程
 
@@ -94,13 +113,13 @@ npm run test:comment-reply
 - MinIO 用于头像和封面存储
 ## 小Y Agent 宠物助手
 
-登录后，所有页面右下角都会出现小Y宠物。点击后可以用自然语言创建长任务，也可以指定执行时间。任务由后端持续执行，关闭抽屉或刷新页面不会丢失进度。
+访客可以在页面右下角看到小Y宠物和能力介绍；登录后可以用自然语言创建长任务，也可以指定执行时间。任务由后端持续执行，关闭抽屉或刷新页面不会丢失进度。
 
 当前内置工具包括：
 
 - 搜索、读取站内博客，识别文章作者
 - 搜索和关注站内用户
-- 通过 Tavily 搜索公开网页
+- 通过百度 AI 搜索与 Tavily 并行搜索公开网页和图片
 - 根据收集资料撰写原创 Markdown 草稿
 - 发布草稿或覆盖更新已有文章
 
@@ -122,13 +141,20 @@ DEEPSEEK_MODEL=deepseek-chat
 
 # 只有公开网页搜索需要
 TAVILY_API_KEY=
+
+# 长任务可靠性：总步骤预算、单步骤最大尝试次数、数据库租约秒数
+PET_AGENT_MAX_STEPS=24
+PET_AGENT_MAX_RETRIES=3
+PET_AGENT_LEASE_SECONDS=90
 ```
 
-MySQL 启动后，服务会自动创建 `agent_task` 与 `agent_task_event` 两张表。生产数据库账号需要拥有首次建表权限；也可以先启动一次服务完成建表，再收紧权限。
+MySQL 启动后，服务会自动创建 `agent_task` 与 `agent_task_event` 两张表，并为旧表补充任务租约、心跳、重试时间和尝试次数字段。生产数据库账号需要拥有首次建表和升级权限；完成启动迁移后可以收紧权限。
 
 ### 状态与安全边界
 
-任务状态包含 `scheduled`、`queued`、`running`、`waiting_input`、`waiting_approval`、`paused`、`completed`、`failed` 和 `cancelled`。调度器每 5 秒领取到期任务；运行中任务的计划、观察结果、草稿和事件时间线都会持久化。
+任务状态包含 `scheduled`、`queued`、`running`、`waiting_input`、`waiting_approval`、`paused`、`completed`、`failed` 和 `cancelled`。调度器每 5 秒领取到期任务；领取过程使用 MySQL 原子租约，多实例不会同时执行同一任务。工作进程会持续写入心跳，租约过期后其他实例可以从持久化进度恢复。失败步骤默认按 5、10、20 秒指数退避，达到尝试上限后停止。
+
+执行计划以结构化步骤保存，每一步都有 `pending`、`running`、`waiting`、`completed`、`failed` 或 `skipped` 状态。观察结果、草稿、重试次数、执行预算和事件时间线都会持久化。
 
 搜索、读取和关注会直接执行并写入审计事件。发布文章和覆盖更新属于高影响动作，运行时会强制停在 `waiting_approval`，只有当前任务所有者批准后才会执行。审批动作会先被原子认领，避免重复点击导致重复发布。
 
@@ -141,6 +167,8 @@ MySQL 启动后，服务会自动创建 `agent_task` 与 `agent_task_event` 两�
 - `POST /tasks/:id/pause|resume|cancel`：控制长任务
 
 前端开发环境可使用 `/login?agentPreview=1` 查看隔离的 UI 预览状态。该入口只在 Vite 开发模式生效，不会绕过生产鉴权，也不会调用真实 Agent API。
+
+可以使用 `npm run test:pet-agent` 验证数据库迁移、原子领取、重复执行拦截、心跳和租约释放。
 
 ### 多提供商、搜索与多模态配置
 

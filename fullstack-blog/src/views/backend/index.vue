@@ -160,7 +160,7 @@ const selectedKeys = computed(() => [route.path]);
 const currentPageTitle = computed(() => flatNavs.find((item) => item.key === route.path)?.title || "管理后台");
 const userInfo = computed(() => store.userInfo);
 const displayName = computed(() => userInfo.value?.nick_name || userInfo.value?.user_name || "管理员");
-const userAvatar = computed(() => userInfo.value?.avatar || "");
+const userAvatar = computed(() => resolveAvatar(userInfo.value?.avatar));
 const avatarText = computed(() => displayName.value.slice(0, 1).toUpperCase());
 const userRoleLabel = computed(() => (userInfo.value?.role_name === "admin" ? "管理员" : "普通用户"));
 

@@ -304,7 +304,7 @@ import { throttle } from "lodash-es";
 
 import { PlusOutlined, DeleteOutlined, UploadOutlined } from "@ant-design/icons-vue";
 
-import { Form, Input, message, Modal, Radio, Spin, Upload, Button, Card, Timeline, Tag, Result, Divider, Space } from "ant-design-vue";
+import { message } from "ant-design-vue";
 
 import { useStore } from "@/stores";
 
@@ -326,7 +326,7 @@ import { AgentClient, AgentState, CompleteResult, Section, generateSessionId } f
 
 interface MarkdownDeps {
     marked: typeof import("marked").marked;
-    DOMPurify: typeof import("dompurify").default;
+    DOMPurify: { sanitize(dirty: string): string };
 }
 
 let markdownDepsPromise: Promise<MarkdownDeps> | null = null;
@@ -404,7 +404,12 @@ const coverUploading = ref(false);
 
 const aiPrompt = ref("");
 
-const fileList = ref<any[]>([]);
+interface ReferenceFileEntry {
+    name: string;
+    originFileObj?: File;
+}
+
+const fileList = ref<ReferenceFileEntry[]>([]);
 
 const agent = ref<AgentClient | null>(null);
 
@@ -454,7 +459,7 @@ const purifiedContent = ref("");
 
 const updateArticlePreview = async (content: string) => {
             const { marked, DOMPurify } = await ensureMarkdownDeps();
-            const markedContent = marked(content || "");
+            const markedContent = await marked(content || "");
             purifiedContent.value = DOMPurify.sanitize(markedContent);
         };
 
@@ -648,7 +653,7 @@ const handleConfirmPublish = async () => {
 
 const { trigger: onConfirmPublish, loading: isConfirmLoading } = useAsyncLoading(handleConfirmPublish);
 
-const beforeUpload = (file) => {
+const beforeUpload = (file: File) => {
             // 限制文件大小不超过 10MB
             const isLt10M = file.size / 1024 / 1024 < 10;
             if (!isLt10M) {
@@ -675,7 +680,7 @@ const readReferenceFile = async () => {
                 return "";
             }
 
-            const rawFile = selectedFile.originFileObj || selectedFile;
+            const rawFile: File = selectedFile.originFileObj || (selectedFile as File);
             const fileName = String(rawFile.name || "").toLowerCase();
 
             if (fileName.endsWith(".doc")) {
@@ -754,30 +759,10 @@ const extractPdfText = async (rawFile: File): Promise<string> => {
             return pageTexts.join("\n\n");
         };
 
-const handleFileChange = (info) => {
+const handleFileChange = (info: { fileList?: ReferenceFileEntry[] }) => {
             if (info.fileList && info.fileList.length > 0) {
                 fileList.value = [info.fileList[info.fileList.length - 1]];
             }
-        };
-
-const generateContent = async () => {
-            if (!aiPrompt.value.trim()) {
-                message.warning("请输入创作主题");
-                return;
-            }
-
-            let fileContent = "";
-            try {
-                fileContent = await readReferenceFile();
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : "参考文件读取失败";
-                message.error(errorMessage);
-                return;
-            }
-            formModel.articleTitle = aiPrompt.value.trim();
-            formModel.summary = fileContent ? fileContent.slice(0, 120) : "";
-            await streamTextToArticle(fileContent || "");
-            message.success("参考内容已应用到正文");
         };
 
 const startAgent = async () => {

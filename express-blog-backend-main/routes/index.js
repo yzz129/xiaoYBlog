@@ -9,6 +9,7 @@ const CommentController = require('../controllers/comment');
 const ReplyController = require('../controllers/reply');
 const ChatgptController = require('../controllers/chatgpt');
 const AgentController = require('../controllers/agent');
+const PetAgentController = require('../controllers/pet-agent');
 const UploadController = require('../controllers/upload');
 
 module.exports = function(app) {
@@ -23,5 +24,6 @@ module.exports = function(app) {
 	app.use('/reply', ReplyController);
 	app.use('/chatgpt', ChatgptController);
 	app.use('/agent', AgentController);
+	app.use('/pet-agent', PetAgentController);
 	app.use('/upload', UploadController);
 };

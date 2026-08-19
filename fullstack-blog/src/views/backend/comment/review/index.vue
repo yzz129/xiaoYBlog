@@ -37,7 +37,7 @@ import { format } from "@/utils/date-utils";
 
 import { approvedFormatter } from "@/utils/formatter";
 
-import CommentAvatarFallback from "@/assets/img/comment-avatar.svg";
+import CommentAvatarFallback from "@/assets/img/default-avatar.png";
 
 const commentList = ref<CommentDTO[]>([]);
 

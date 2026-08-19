@@ -5,7 +5,7 @@
 ## 技术栈
 
 - Express
-- MySQL / mysql2
+- MySQL（mysql2 连接池）
 - Redis
 - Socket.IO
 - MinIO
@@ -25,6 +25,14 @@
 npm install
 npm start
 ```
+
+也可以一次启动后端、MySQL、Redis 和 MinIO：
+
+```bash
+docker compose up -d
+```
+
+Compose 会在容器网络内固定使用 `mysql:3306`、`redis:6379` 和 `minio:9000`，`.env` 中的同名主机地址只用于 Windows 原生启动。
 
 默认服务地址：
 
@@ -52,6 +60,8 @@ npm run seed:demo
 
 ```bash
 npm run test:comment-reply
+npm run test:password-security
+npm run test:pet-agent
 ```
 
 覆盖范围：
@@ -60,6 +70,15 @@ npm run test:comment-reply
 - 已审核回复会出现在评论回复列表中
 - 未审核回复不会混入公开评论回复列表
 - 未审核回复会出现在审核分页接口中
+- 新账号使用随机盐 `scrypt` 保存凭证，旧 SHA-256 账号登录时会自动迁移
+- Agent 原子领取、重复执行拦截、心跳、租约释放与恢复
+
+## 认证安全
+
+- 前端仍以 SHA-256 摘要作为登录凭证，后端不会直接保存该摘要，而是再使用随机盐 `scrypt` 派生后入库。
+- 历史账号无需重置密码；第一次成功登录会在同一个数据库连接中自动升级存储格式。
+- Session 密钥、Cookie 名称、`SameSite`、`Secure` 和有效期均从环境变量读取。生产环境必须设置独立的 `SESSION_SECRET`，HTTPS 部署时设置 `SESSION_COOKIE_SECURE=true`。
+- Session Cookie 使用 `HttpOnly`，并关闭 `resave` 与匿名空 Session 保存。
 
 ## 可演示验收流程
 
@@ -92,3 +111,92 @@ npm run test:comment-reply
 - 私聊未读提醒从轮询升级为实时推送
 - AI 写作支持流式大纲、流式章节、Redis 会话恢复
 - MinIO 用于头像和封面存储
+## 小Y Agent 宠物助手
+
+访客可以在页面右下角看到小Y宠物和能力介绍；登录后可以用自然语言创建长任务，也可以指定执行时间。任务由后端持续执行，关闭抽屉或刷新页面不会丢失进度。
+
+当前内置工具包括：
+
+- 搜索、读取站内博客，识别文章作者
+- 搜索和关注站内用户
+- 通过百度 AI 搜索与 Tavily 并行搜索公开网页和图片
+- 根据收集资料撰写原创 Markdown 草稿
+- 发布草稿或覆盖更新已有文章
+
+Agent 不是固定工作流。运行时会反复读取任务目标和真实工具结果，由模型选择下一步工具；没有模型密钥时会启用一个只覆盖常见站内搜索、关注、写作和发布任务的有限本地降级策略。
+
+### 配置
+
+在后端环境文件中至少配置一个模型提供方：
+
+```env
+# 推荐：OpenAI Responses API
+OPENAI_API_KEY=
+OPENAI_AGENT_MODEL=gpt-5-mini
+
+# 或使用现有的 DeepSeek OpenAI-compatible 接口
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_MODEL=deepseek-chat
+
+# 只有公开网页搜索需要
+TAVILY_API_KEY=
+
+# 长任务可靠性：总步骤预算、单步骤最大尝试次数、数据库租约秒数
+PET_AGENT_MAX_STEPS=24
+PET_AGENT_MAX_RETRIES=3
+PET_AGENT_LEASE_SECONDS=90
+```
+
+MySQL 启动后，服务会自动创建 `agent_task` 与 `agent_task_event` 两张表，并为旧表补充任务租约、心跳、重试时间和尝试次数字段。生产数据库账号需要拥有首次建表和升级权限；完成启动迁移后可以收紧权限。
+
+### 状态与安全边界
+
+任务状态包含 `scheduled`、`queued`、`running`、`waiting_input`、`waiting_approval`、`paused`、`completed`、`failed` 和 `cancelled`。调度器每 5 秒领取到期任务；领取过程使用 MySQL 原子租约，多实例不会同时执行同一任务。工作进程会持续写入心跳，租约过期后其他实例可以从持久化进度恢复。失败步骤默认按 5、10、20 秒指数退避，达到尝试上限后停止。
+
+执行计划以结构化步骤保存，每一步都有 `pending`、`running`、`waiting`、`completed`、`failed` 或 `skipped` 状态。观察结果、草稿、重试次数、执行预算和事件时间线都会持久化。
+
+搜索、读取和关注会直接执行并写入审计事件。发布文章和覆盖更新属于高影响动作，运行时会强制停在 `waiting_approval`，只有当前任务所有者批准后才会执行。审批动作会先被原子认领，避免重复点击导致重复发布。
+
+主要接口位于 `/pet-agent`：
+
+- `POST /tasks`：创建立即或定时任务
+- `GET /tasks`、`GET /tasks/:id`：任务列表与事件详情
+- `POST /tasks/:id/messages`：补充要求并继续规划
+- `POST /tasks/:id/approval`：批准或拒绝待确认动作
+- `POST /tasks/:id/pause|resume|cancel`：控制长任务
+
+前端开发环境可使用 `/login?agentPreview=1` 查看隔离的 UI 预览状态。该入口只在 Vite 开发模式生效，不会绕过生产鉴权，也不会调用真实 Agent API。
+
+可以使用 `npm run test:pet-agent` 验证数据库迁移、原子领取、重复执行拦截、心跳和租约释放。
+
+### 多提供商、搜索与多模态配置
+
+宠物 Agent 支持按顺序自动故障转移。推荐把密钥写在不会提交的 `.env.local`，不要写进前端变量或源码：
+
+```env
+PET_AGENT_PROVIDER_ORDER=agnes,openrouter,openai,deepseek
+
+# OpenRouter 只允许 openrouter/free 或以 :free 结尾的模型；其他模型会在本地被过滤。
+OPENROUTER_API_KEY=
+OPENROUTER_AGENT_MODEL=openrouter/free
+
+# Agnes 用于文本、图片理解，并作为图片生成后备。
+AGNES_API_KEY=
+AGNES_AGENT_MODEL=agnes-2.5-flash
+AGNES_IMAGE_MODEL=agnes-image-2.1-flash
+
+# 百度 AI 搜索与 Tavily 会并行查询，一个失败时自动使用另一个。
+BAIDU_SEARCH_API_KEY=
+BAIDU_SEARCH_MODEL=deepseek-v4-flash
+TAVILY_API_KEY=
+
+# Pollinations 仅允许官方实时模型目录中价格字段全部为 0 的图片模型。
+# 当前没有可确认的零价模型时请保持为空，系统不会消耗 Pollen。
+POLLINATIONS_API_KEY=
+POLLINATIONS_IMAGE_MODEL=
+```
+
+`web_search` 会合并百度与 Tavily 的网页、图片和来源信息。`analyze_image` 可把公开图片 URL 交给视觉模型理解；`draft_blog` 会同时读取文字资料和任务图片，并产生真实图片或待执行的配图计划；`generate_blog_image` 会生成图片、上传到 MinIO、写入 Markdown，并把封面 URL 保存到文章的 `poster` 字段。发布和覆盖更新仍然必须由任务所有者审批。
+
+免费约束在后端强制执行，而不是只靠配置约定：OpenRouter 非免费模型不会进入提供商列表；Pollinations 每次调用前都会重新读取官方模型目录并检查价格，无法证明为零价时直接拒绝调用。免费模型和免费额度通常有速率与可用性限制，因此长任务可能自动切换到后续提供商。

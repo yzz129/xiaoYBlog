@@ -16,51 +16,42 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-8002}
-      ALLOW_CLIENT: ${ALLOW_CLIENT}
-      MYSQL_HOST: ${MYSQL_HOST}
-      MYSQL_PORT: ${MYSQL_PORT}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_MULTIPLE_STATEMENTS: ${MYSQL_MULTIPLE_STATEMENTS}
-      MYSQL_WAIT_FOR_CONNECTIONS: ${MYSQL_WAIT_FOR_CONNECTIONS}
-      MYSQL_CHARSET: ${MYSQL_CHARSET}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: ${REDIS_DB}
-      REDIS_CONNECT_TIMEOUT_MS: ${REDIS_CONNECT_TIMEOUT_MS}
-      REDIS_RETRY_AFTER_MS: ${REDIS_RETRY_AFTER_MS}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRE_DAYS: ${JWT_EXPIRE_DAYS}
-      EMAIL_SERVICE: ${EMAIL_SERVICE}
-      EMAIL_PORT: ${EMAIL_PORT}
-      EMAIL_SECURE_CONNECTION: ${EMAIL_SECURE_CONNECTION}
-      EMAIL_AUTH_USER: ${EMAIL_AUTH_USER}
-      EMAIL_AUTH_PASS: ${EMAIL_AUTH_PASS}
-      AUTHOR_EMAIL: ${AUTHOR_EMAIL}
-      BLOG_NAME: ${BLOG_NAME}
-      SITE_URL: ${SITE_URL}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL}
-      AI_KNOWLEDGE_CUTOFF: ${AI_KNOWLEDGE_CUTOFF}
-      AI_SESSION_TTL_SECONDS: ${AI_SESSION_TTL_SECONDS}
-      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
-      MINIO_PORT: ${MINIO_PORT}
-      MINIO_USE_SSL: ${MINIO_USE_SSL}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      MINIO_BUCKET: ${MINIO_BUCKET}
-      MINIO_REGION: ${MINIO_REGION}
-      MINIO_PUBLIC_BASE_URL: ${MINIO_PUBLIC_BASE_URL}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
     ports:
       - ${PORT:-8002}:${PORT:-8002}
     depends_on:
-      - minio
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-blog}
+    ports:
+      - ${MYSQL_PORT:-3306}:3306
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./init-db-simple.sql:/docker-entrypoint-initdb.d/01-blog-schema.sql:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
   minio:
     image: minio/minio:latest
@@ -75,6 +66,24 @@ services:
       - 9001:9001
     volumes:
       - minio-data:/data
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command: >-
+      sh -c 'exec redis-server --appendonly yes $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}'
+    ports:
+      - ${REDIS_PORT:-6379}:6379
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli $${REDIS_PASSWORD:+-a $$REDIS_PASSWORD} ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
@@ -106,7 +115,9 @@ services:
 # volumes:
 #   db-data:
 volumes:
+  mysql-data:
   minio-data:
+  redis-data:
 # secrets:
 #   db-password:
 #     file: db/password.txt

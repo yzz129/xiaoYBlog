@@ -18,8 +18,9 @@
 - Pinia
 - Vue Router
 - Ant Design Vue
-- Element Plus
 - Socket.IO Client
+
+运行环境统一为 Node.js 20+，依赖使用 npm 与 `package-lock.json` 管理。
 
 ## 启动
 

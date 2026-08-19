@@ -30,7 +30,7 @@
                     </header>
 
                     <main class="article-main">
-                        <el-image :src="article.poster" class="article-poster" fit="cover" />
+                        <img v-if="article.poster" :src="article.poster" class="article-poster" :alt="article.article_name" decoding="async" />
                         <section class="md-preview" v-html="purifiedContent"></section>
                     </main>
 
@@ -68,6 +68,9 @@
                     </div>
                 </article>
 
+                <IllustratedEmpty v-else-if="isError" title="文章加载失败" description="网络或渲染模块暂时不可用，请重新加载。">
+                    <a-button type="primary" @click="getDetail">重新加载</a-button>
+                </IllustratedEmpty>
                 <IllustratedEmpty v-else title="文章不存在或当前不可见" description="返回首页看看其他文章吧。" />
             </a-skeleton>
 
@@ -129,6 +132,7 @@ import { useStore } from "@/stores";
 import { resolveAvatar } from "@/utils/avatar";
 import { format } from "@/utils/date-utils";
 import { setScrollTop } from "@/utils/dom";
+import { seoSite, setSeo } from "@/utils/seo";
 
 import Comments from "./comments.vue";
 import IllustratedEmpty from "@/components/illustrated-empty.vue";
@@ -161,14 +165,15 @@ const commentDrawerWidth = computed(() => {
 
 let reportTimer: number | null = null;
 let cachedMarked: typeof import("marked").marked | null = null;
-let cachedDOMPurify: import("dompurify").default | null = null;
+type DOMPurifyInstance = { sanitize(dirty: string): string };
+let cachedDOMPurify: DOMPurifyInstance | null = null;
 
 async function loadMarkdownLibs() {
     if (cachedMarked && cachedDOMPurify) {
         return { marked: cachedMarked, DOMPurify: cachedDOMPurify };
     }
 
-    const [markedMod, dompurifyMod, hljsMod, hljsCss, hljsJs, hljsHtml, hljsShell, hljsJson, hljsPlain] =
+    const [markedMod, dompurifyMod, hljsMod, , hljsJs, hljsHtml, hljsCss, hljsShell, hljsJson, hljsPlain] =
         await Promise.all([
             import("marked"),
             import("dompurify"),
@@ -201,19 +206,21 @@ async function loadMarkdownLibs() {
             "</a>"
         );
     };
+    renderer.code = function customCode(code: string, infoString?: string) {
+        const requestedLanguage = infoString?.trim().split(/\s+/)[0] || "plaintext";
+        const language = hljs.getLanguage(requestedLanguage) ? requestedLanguage : "plaintext";
+        const highlighted = hljs.highlight(code, { language }).value;
+        return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>\n`;
+    };
 
     markedMod.marked.setOptions({
         renderer,
-        highlight(code: string, lang: string) {
-            const language = hljs.getLanguage(lang) ? lang : "plaintext";
-            return hljs.highlight(code, { language }).value;
-        },
         gfm: true,
         breaks: false,
     });
 
     cachedMarked = markedMod.marked;
-    cachedDOMPurify = dompurifyMod.default;
+    cachedDOMPurify = dompurifyMod.default as DOMPurifyInstance;
 
     return { marked: cachedMarked, DOMPurify: cachedDOMPurify };
 }
@@ -234,15 +241,94 @@ const startReportTimer = () => {
     }, 5000);
 };
 
+const toIsoDate = (value?: string) => {
+    if (!value) return undefined;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+};
+
+const createArticleSeo = (item: ArticleDTO) => {
+    const sourceContent = item.content || item.article_text || "";
+    const plainContent = sourceContent
+        .replace(/```[\s\S]*?```/g, " ")
+        .replace(/[#>*_`~()!-]/g, " ")
+        .replaceAll("[", " ")
+        .replaceAll("]", " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const description = (item.summary || plainContent || `${item.article_name} - 小Y博客技术文章`).slice(0, 160);
+    const canonicalPath = `/article/${item.id}`;
+    const canonicalUrl = seoSite.absoluteUrl(canonicalPath);
+    const image = item.poster || seoSite.image;
+    const publishedTime = toIsoDate(item.create_time);
+    const modifiedTime = toIsoDate(item.update_time) || publishedTime;
+    const keywords = [...new Set([...(item.tags || []).map((tag) => tag.tagName), ...(item.categories || []).map((category) => category.categoryName)])];
+    const section = (item.categories || []).map((category) => category.categoryName).join(", ") || "技术文章";
+
+    setSeo({
+        title: item.article_name,
+        description,
+        path: canonicalPath,
+        image,
+        type: "article",
+        robots: item.private ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        keywords,
+        author: item.author,
+        publishedTime,
+        modifiedTime,
+        section,
+        jsonLd: {
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            "@id": `${canonicalUrl}#article`,
+            headline: item.article_name,
+            description,
+            image: [seoSite.absoluteUrl(image)],
+            datePublished: publishedTime,
+            dateModified: modifiedTime,
+            inLanguage: "zh-CN",
+            isAccessibleForFree: true,
+            wordCount: plainContent.length,
+            articleSection: section,
+            keywords: keywords.join(", "),
+            author: {
+                "@type": "Person",
+                name: item.author,
+                url: item.author_user_id ? seoSite.absoluteUrl(`/user/${item.author_user_id}`) : seoSite.url,
+            },
+            publisher: {
+                "@type": "Organization",
+                name: seoSite.name,
+                url: seoSite.url,
+                logo: {
+                    "@type": "ImageObject",
+                    url: seoSite.image,
+                    width: 512,
+                    height: 512,
+                },
+            },
+            mainEntityOfPage: {
+                "@type": "WebPage",
+                "@id": canonicalUrl,
+            },
+        },
+    });
+};
+
 const getArticleDetail = async () => {
-    const { marked, DOMPurify } = await loadMarkdownLibs();
-    const res = await articleService.detail(articleId.value);
-    article.value = res.data;
-    purifiedContent.value = DOMPurify.sanitize(marked.parse((res.data as any).content || ""));
+    const [{ marked, DOMPurify }, res] = await Promise.all([loadMarkdownLibs(), articleService.detail(articleId.value)]);
+    article.value = res.data || null;
+    const renderedContent = article.value
+        ? await marked.parse(article.value.content || article.value.article_text || "")
+        : "";
+    purifiedContent.value = DOMPurify.sanitize(renderedContent);
+    if (!article.value) return;
+    createArticleSeo(article.value);
     startReportTimer();
 };
 
-const { trigger: getDetail, loading } = useAsyncLoading(getArticleDetail);
+const { trigger: getDetail, loading, isError } = useAsyncLoading(getArticleDetail);
 
 const getPreAndNextArticle = async () => {
     const res = await articleService.neighbors(articleId.value);

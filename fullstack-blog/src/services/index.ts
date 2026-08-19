@@ -27,12 +27,6 @@ function getToken(): string {
     return localStorage.getItem("token") || "";
 }
 
-function redirectToLogin() {
-    if (window.location.pathname !== "/login") {
-        window.location.assign("/login");
-    }
-}
-
 api.defaults.headers.common["Content-Type"] = "application/x-www-form-urlencoded";
 api.defaults.transformRequest = (data) => qs.stringify(data, { encode: true });
 
@@ -58,8 +52,7 @@ api.interceptors.response.use(
             case InnerCode.TokenExpired:
             case InnerCode.Forbidden:
                 eventBus.emit("sessionInvalid");
-                redirectToLogin();
-                break;
+                return Promise.reject(res);
         }
 
         if (msg) {

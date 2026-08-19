@@ -1,10 +1,13 @@
 <template>
     <div class="comment__wrapper">
-        <el-image class="comment__avatar" :src="formattedComment.avatar" lazy>
-            <template #error>
-                <el-image :src="avatarFallback" />
-            </template>
-        </el-image>
+        <img
+            class="comment__avatar"
+            :src="formattedComment.avatar"
+            :alt="formattedComment.nick_name"
+            loading="lazy"
+            decoding="async"
+            @error="useAvatarFallback($event, avatarFallback)"
+        />
 
         <div class="comment__info">
             <a
@@ -44,11 +47,14 @@
             <div v-if="formattedComment.replies.length > 0" class="reply__list">
                 <div v-for="reply in formattedComment.replies" :key="reply.id" class="reply__card">
                     <div class="reply__header">
-                        <el-image class="reply__avatar" :src="reply.avatar" lazy>
-                            <template #error>
-                                <el-image :src="replyAvatarFallback" />
-                            </template>
-                        </el-image>
+                        <img
+                            class="reply__avatar"
+                            :src="reply.avatar"
+                            :alt="reply.nick_name"
+                            loading="lazy"
+                            decoding="async"
+                            @error="useAvatarFallback($event, replyAvatarFallback)"
+                        />
 
                         <div class="reply__subinfo">
                             <span class="reply__info">
@@ -239,8 +245,16 @@ const handleReplySub = async () => {
 
 const { trigger: onClickReplySub, loading: isReplySubLoading } = useAsyncLoading(handleReplySub);
 
-const avatarFallback = new URL("@/assets/img/comment-avatar.svg", import.meta.url).href;
-const replyAvatarFallback = new URL("@/assets/img/reply-avatar.svg", import.meta.url).href;
+const avatarFallback = new URL("@/assets/img/default-avatar.png", import.meta.url).href;
+const replyAvatarFallback = avatarFallback;
+
+const useAvatarFallback = (event: Event, fallback: string) => {
+    const image = event.currentTarget as HTMLImageElement;
+    if (image.dataset.fallbackApplied) return;
+
+    image.dataset.fallbackApplied = "true";
+    image.src = fallback;
+};
 
 const formattedComment = computed(() => ({
     ...props.comment,
@@ -264,15 +278,12 @@ const formattedComment = computed(() => ({
     box-shadow: 0 2px 26px rgb(7 17 27 / 12%);
 }
 
-:deep(.comment__avatar) {
+.comment__avatar {
     width: 40px;
     height: 40px;
-
-    > img {
-        height: 100%;
-        border-radius: 100%;
-        object-fit: cover;
-    }
+    flex: 0 0 auto;
+    border-radius: 100%;
+    object-fit: cover;
 }
 
 .comment__info {
@@ -312,15 +323,12 @@ const formattedComment = computed(() => ({
     display: flex;
 }
 
-:deep(.reply__avatar) {
+.reply__avatar {
     width: 24px;
     height: 24px;
-
-    > img {
-        height: 100%;
-        border-radius: 100%;
-        object-fit: cover;
-    }
+    flex: 0 0 auto;
+    border-radius: 100%;
+    object-fit: cover;
 }
 
 .reply__subinfo {

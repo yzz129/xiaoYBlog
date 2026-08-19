@@ -13,9 +13,7 @@
             <a-col :xs="24" :lg="10">
                 <a-card title="头像与资料" :bordered="false">
                     <div class="profile-avatar">
-                        <a-avatar :size="96" :src="profileForm.avatar || undefined">
-                            <template v-if="!profileForm.avatar">{{ avatarText }}</template>
-                        </a-avatar>
+                        <a-avatar class="profile-avatar__preview" :size="96" :src="avatarPreview" />
                         <div class="profile-avatar__actions">
                             <a-upload :show-upload-list="false" accept="image/*" :before-upload="handleAvatarUpload">
                                 <a-button :loading="avatarUploading">
@@ -106,6 +104,7 @@ import { useAsyncLoading } from "@/hooks/async";
 import { uploadService } from "@/services/upload";
 import { userService } from "@/services/user";
 import { useStore } from "@/stores";
+import { resolveAvatar } from "@/utils/avatar";
 
 const store = useStore();
 
@@ -125,7 +124,7 @@ const passwordForm = reactive({
     confirmPassword: "",
 });
 
-const avatarText = computed(() => (profileForm.nickName || currentUser.value?.user_name || "U").slice(0, 1).toUpperCase());
+const avatarPreview = computed(() => resolveAvatar(profileForm.avatar));
 
 const init = async () => {
     const user = await store.fetchCurrent(true);
@@ -223,6 +222,15 @@ const handleAvatarUpload = async (file: File) => {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.profile-avatar__preview {
+    flex: 0 0 auto;
+    background: #f4faff;
+}
+
+.profile-avatar__preview :deep(img) {
+    object-fit: contain;
 }
 
 .profile-avatar__tip {

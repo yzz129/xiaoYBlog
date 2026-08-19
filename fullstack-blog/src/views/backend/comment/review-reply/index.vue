@@ -28,7 +28,7 @@ import { replyService } from "@/services/reply";
 
 import { format } from "@/utils/date-utils";
 
-import CommentAvatarFallback from "@/assets/img/comment-avatar.svg";
+import CommentAvatarFallback from "@/assets/img/default-avatar.png";
 
 const replyList = ref<ReplyDTO[]>([]);
 

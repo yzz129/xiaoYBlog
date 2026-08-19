@@ -8,12 +8,10 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "allowJs": true,
     "sourceMap": true,
     "baseUrl": ".",
     "types": [
-      "webpack-env",
-      "jest"
+      "vite/client"
     ],
     "paths": {
       "@/*": [
@@ -31,8 +29,7 @@
     "src/**/*.ts",
     "src/**/*.d.ts",
     "src/image.d.ts",
-    "src/**/*.vue",
-    "tests/**/*.ts"
+    "src/**/*.vue"
   ],
   "exclude": [
     "node_modules"

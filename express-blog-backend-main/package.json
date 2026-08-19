@@ -25,22 +25,23 @@
     "homepage": "https://blog.wbjiang.cn/",
     "dependencies": {
         "@langchain/core": "^1.1.31",
+        "connect-redis": "^7.1.1",
         "cookie-parser": "^1.4.6",
         "dotenv": "^17.3.1",
         "ejs": "^3.1.9",
         "express": "^4.18.2",
+        "express-rate-limit": "^7.5.1",
         "express-session": "^1.17.3",
         "helmet": "^7.1.0",
         "jsonrepair": "^3.15.0",
         "jsonwebtoken": "^9.0.2",
         "langchain": "^1.2.30",
-        "lodash": "^4.17.21",
         "minio": "^8.0.7",
         "morgan": "^1.10.0",
         "multer": "^2.1.1",
         "mysql2": "^3.9.1",
         "node-fetch": "^3.3.2",
-        "nodemailer": "^6.9.8",
+        "nodemailer": "^9.0.5",
         "openai": "^4.24.7",
         "redis": "^4.6.12",
         "socket.io": "^4.7.4",
@@ -63,5 +64,8 @@
     "engines": {
         "npm": ">=8.0.0",
         "node": ">=20.0.0"
+    },
+    "overrides": {
+        "lodash": "4.18.1"
     }
 }

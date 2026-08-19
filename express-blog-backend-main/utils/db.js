@@ -10,8 +10,10 @@ const pool = mysql.createPool({
     charset: config.mysql.charset,
     waitForConnections: config.mysql.waitForConnections,
     multipleStatements: config.mysql.multipleStatements,
-    connectionLimit: 10,
-    queueLimit: 0,
+    connectionLimit: Math.min(Math.max(config.mysql.connectionLimit || 8, 1), 50),
+    queueLimit: Math.min(Math.max(config.mysql.queueLimit || 100, 1), 1000),
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
 });
 
 function normalizeOptions(options) {

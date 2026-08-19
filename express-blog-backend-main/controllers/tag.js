@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const indexSQL = require('../sql');
 const dbUtils = require('../utils/db');
-const { omit } = require('lodash');
 
 /**
  * @param {Number} getCount 是否需要同时查出每个标签下的文章数量
@@ -89,7 +88,7 @@ router.get('/admin/page', function(req, res, next) {
         if (results) {
             const list = results[0].map(item => {
                 return {
-                    ...omit(item, 'article_ids'),
+            ...Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'article_ids')),
                     tag_count: item.article_ids ? item.article_ids.split(',').length : 0
                 }
             });

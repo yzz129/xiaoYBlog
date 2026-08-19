@@ -201,6 +201,16 @@ async function listTasks(userId, limit = 20) {
     return results.map(mapTask);
 }
 
+async function countActiveTasks(userId) {
+    await ensureTables();
+    const { results } = await dbUtils.query({
+        sql: `SELECT COUNT(*) AS total FROM agent_task
+              WHERE user_id = ? AND status IN ('queued', 'scheduled', 'running', 'waiting_input', 'waiting_approval', 'paused')`,
+        values: [userId],
+    });
+    return Number(results?.[0]?.total || 0);
+}
+
 async function listRunnableTasks(limit = 8) {
     await ensureTables();
     const { results } = await dbUtils.query({
@@ -348,6 +358,7 @@ module.exports = {
     addEvent,
     claimApproval,
     claimTask,
+    countActiveTasks,
     createTask,
     ensureTables,
     getTask,

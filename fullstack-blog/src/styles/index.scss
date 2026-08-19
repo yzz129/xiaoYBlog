@@ -14,24 +14,8 @@
 }
 
 @font-face {
-    font-family: "XY Rounded Full";
-    src: url("../assets/fonts/xy-rounded-full.woff2") format("woff2");
-    font-style: normal;
-    font-weight: 400;
-    font-display: swap;
-}
-
-@font-face {
     font-family: "XY Doodle UI";
     src: url("../assets/fonts/xy-doodle-ui.woff2") format("woff2");
-    font-style: normal;
-    font-weight: 400;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: "XY Doodle Full";
-    src: url("../assets/fonts/xy-doodle-full.woff2") format("woff2");
     font-style: normal;
     font-weight: 400;
     font-display: swap;
@@ -42,8 +26,8 @@
  * 正文使用圆润字形，标题保留轻盈可爱的手写感。
  */
 :root {
-    --xy-font-body: "XY Rounded UI", "XY Rounded Full", "YouYuan", "幼圆", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-    --xy-font-display: "XY Doodle UI", "XY Doodle Full", "XY Rounded UI", "XY Rounded Full", "YouYuan", "幼圆", sans-serif;
+    --xy-font-body: "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+    --xy-font-display: "XY Doodle UI", "XY Rounded UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
     --xy-font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     --xy-white: #ffffff;
     --xy-paper: #fbfdfc;
@@ -70,16 +54,31 @@ body,
     min-height: 100%;
 }
 
-/* 隐藏所有平台的滚动条，滚轮、触摸和键盘滚动仍然可用。 */
+/* 保留滚动位置反馈，同时让滚动条保持轻量。 */
 * {
-    scrollbar-width: none !important;
-    -ms-overflow-style: none !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(121 221 189 / 80%) transparent;
 }
 
 *::-webkit-scrollbar {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
+    width: 8px;
+    height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: rgb(121 221 189 / 82%);
+    background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: rgb(54 196 154 / 92%);
+    background-clip: padding-box;
 }
 
 body {
@@ -87,7 +86,7 @@ body {
     color: var(--xy-ink);
     background: var(--xy-white);
     font-family: var(--xy-font-body);
-    font-weight: 500;
+    font-weight: 400;
     line-height: 1.68;
     letter-spacing: 0.012em;
     -webkit-font-smoothing: antialiased;
@@ -175,6 +174,51 @@ a {
 
 img {
     max-width: 100%;
+}
+
+html,
+body,
+#app {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+}
+
+@media (max-width: 700px) {
+    #app .base-layout__wrapper {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: clip;
+    }
+
+    #app .header-shell,
+    #app .header-left,
+    #app .header-center,
+    #app .header-right,
+    #app .base-layout__main,
+    #app .home-masthead,
+    #app .base-layout__wrapper > .card-hot {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    #app .article-card--featured {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #app .article-card--featured .article-poster {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+    }
+
+    #app .article-card--featured .article-card__footer {
+        position: static;
+        margin-top: 12px;
+    }
 }
 
 ::selection {

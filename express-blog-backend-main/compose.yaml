@@ -39,7 +39,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-blog}
     ports:
-      - ${MYSQL_PORT:-3306}:3306
+      - 127.0.0.1:${MYSQL_PORT:-3306}:3306
     volumes:
       - mysql-data:/var/lib/mysql
       - ./init-db-simple.sql:/docker-entrypoint-initdb.d/01-blog-schema.sql:ro
@@ -62,8 +62,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     ports:
-      - ${MINIO_PORT:-9000}:9000
-      - 9001:9001
+      - 127.0.0.1:${MINIO_PORT:-9000}:9000
+      - 127.0.0.1:9001:9001
     volumes:
       - minio-data:/data
 
@@ -75,7 +75,7 @@ services:
     command: >-
       sh -c 'exec redis-server --appendonly yes $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}'
     ports:
-      - ${REDIS_PORT:-6379}:6379
+      - 127.0.0.1:${REDIS_PORT:-6379}:6379
     volumes:
       - redis-data:/data
     healthcheck:

@@ -8,6 +8,8 @@ const helmet = require('helmet')
 const routeMiddleware = require('./routes/index');
 const { startWs } = require('./utils/ws');
 const config = require("./config");
+const { createSessionStore } = require("./utils/session-store");
+const { globalLimiter } = require("./utils/rate-limit");
 
 const app = express();
 
@@ -39,6 +41,7 @@ const sessionMiddleware = session({
   resave: false,
   saveUninitialized: false,
   rolling: true,
+  store: createSessionStore(),
 });
 
 // 完善http头部，提高安全性
@@ -100,6 +103,7 @@ app.use(function(req, res, next) {
 });
 
 // 路由中间件
+app.use(globalLimiter);
 routeMiddleware(app);
 
 server.listen(app.get('port'), function() {

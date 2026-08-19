@@ -11,9 +11,16 @@ const ChatgptController = require('../controllers/chatgpt');
 const AgentController = require('../controllers/agent');
 const PetAgentController = require('../controllers/pet-agent');
 const UploadController = require('../controllers/upload');
+const { authLimiter, uploadLimiter, agentLimiter } = require('../utils/rate-limit');
 
 module.exports = function(app) {
 	app.use(BaseController);
+	app.use('/validator/img_code', authLimiter);
+	app.use('/user/login', authLimiter);
+	app.use('/user/register', authLimiter);
+	app.use('/user/forgetpwd', authLimiter);
+	app.use('/upload/image', uploadLimiter);
+	app.use('/pet-agent', agentLimiter);
 	app.use('/validator', ValidatorController);
 	app.use('/user', UserController);
 	app.use('/banner', BannerController);

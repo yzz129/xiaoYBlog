@@ -50,12 +50,17 @@ router.post("/tasks", async (req, res) => {
     const goal = String(req.body?.message || req.body?.goal || "").trim();
     if (!goal) return sendError(res, "请告诉小Y要做什么");
     try {
+        const ownerId = userId(req);
+        const maxActiveTasks = Math.min(Math.max(Number(process.env.PET_AGENT_MAX_ACTIVE_TASKS_PER_USER) || 5, 1), 20);
+        if (await store.countActiveTasks(ownerId) >= maxActiveTasks) {
+            return sendError(res, `同时进行的任务不能超过 ${maxActiveTasks} 个，请先完成或取消已有任务`, "016429");
+        }
         let scheduledAt = req.body?.scheduledAt ? new Date(req.body.scheduledAt) : parseNaturalSchedule(goal);
         if (scheduledAt && Number.isNaN(scheduledAt.getTime())) scheduledAt = null;
         if (scheduledAt && scheduledAt.getTime() <= Date.now()) scheduledAt = null;
         const status = scheduledAt ? "scheduled" : "queued";
         const task = await store.createTask({
-            userId: userId(req),
+            userId: ownerId,
             title: inferTitle(goal),
             goal,
             scheduledAt,

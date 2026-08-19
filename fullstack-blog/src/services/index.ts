@@ -99,6 +99,10 @@ api.interceptors.response.use(
     }
 );
 
+function unwrapResponse<T extends CommonResponse>(request: Promise<unknown>): Promise<T> {
+    return request as Promise<T>;
+}
+
 export class ApiService {
     private feature: string;
 
@@ -107,17 +111,17 @@ export class ApiService {
     }
 
     protected $get<T extends CommonResponse>(action: string, params: PlainObject = {}, config: PlainObject = {}): Promise<T> {
-        return api.get(`/${this.feature}/${action}`, {
+        return unwrapResponse<T>(api.get(`/${this.feature}/${action}`, {
             ...config,
             params: requestParamsFilter(params, true),
-        });
+        }));
     }
 
     protected $del<T extends CommonResponse>(action: string, params: PlainObject = {}, config: PlainObject = {}): Promise<T> {
-        return api.delete(`/${this.feature}/${action}`, {
+        return unwrapResponse<T>(api.delete(`/${this.feature}/${action}`, {
             ...config,
             params: requestParamsFilter(params, true),
-        });
+        }));
     }
 
     protected $delJson<T extends CommonResponse>(action: string, params: PlainObject = {}, config: PlainObject = {}): Promise<T> {
@@ -126,15 +130,15 @@ export class ApiService {
             transformRequest: (data: PlainObject) => JSON.stringify(data),
         };
 
-        return api.delete(`/${this.feature}/${action}`, {
+        return unwrapResponse<T>(api.delete(`/${this.feature}/${action}`, {
             ...defaultConfig,
             ...config,
             data: requestParamsFilter(params),
-        });
+        }));
     }
 
     protected $post<T extends CommonResponse>(action: string, params: PlainObject = {}, config: PlainObject = {}): Promise<T> {
-        return api.post(`/${this.feature}/${action}`, requestParamsFilter(params), config);
+        return unwrapResponse<T>(api.post(`/${this.feature}/${action}`, requestParamsFilter(params), config));
     }
 
     protected $postJson<T extends CommonResponse>(action: string, params: PlainObject = {}, config: PlainObject = {}): Promise<T> {
@@ -143,7 +147,7 @@ export class ApiService {
             transformRequest: (data: PlainObject) => JSON.stringify(data),
         };
 
-        return api.post(`/${this.feature}/${action}`, requestParamsFilter(params), { ...defaultConfig, ...config });
+        return unwrapResponse<T>(api.post(`/${this.feature}/${action}`, requestParamsFilter(params), { ...defaultConfig, ...config }));
     }
 
     protected $upload<T extends CommonResponse>(
@@ -154,11 +158,11 @@ export class ApiService {
             transformRequest: null,
         }
     ): Promise<T> {
-        return api.post(`/${this.feature}/${action}`, params, config);
+        return unwrapResponse<T>(api.post(`/${this.feature}/${action}`, params, config));
     }
 
     protected $put<T extends CommonResponse>(action: string, params: PlainObject = {}, config: PlainObject = {}): Promise<T> {
-        return api.put(`/${this.feature}/${action}`, requestParamsFilter(params), config);
+        return unwrapResponse<T>(api.put(`/${this.feature}/${action}`, requestParamsFilter(params), config));
     }
 
     protected $putJson<T extends CommonResponse>(action: string, params: PlainObject = {}, config: PlainObject = {}): Promise<T> {
@@ -167,11 +171,11 @@ export class ApiService {
             transformRequest: (data: PlainObject) => JSON.stringify(data),
         };
 
-        return api.put(`/${this.feature}/${action}`, params, { ...defaultConfig, ...config });
+        return unwrapResponse<T>(api.put(`/${this.feature}/${action}`, params, { ...defaultConfig, ...config }));
     }
 
     protected $patch<T extends CommonResponse>(action: string, params: PlainObject = {}, config: PlainObject = {}): Promise<T> {
-        return api.patch(`/${this.feature}/${action}`, requestParamsFilter(params), config);
+        return unwrapResponse<T>(api.patch(`/${this.feature}/${action}`, requestParamsFilter(params), config));
     }
 
     protected $patchJson<T extends CommonResponse>(action: string, params: PlainObject = {}, config: PlainObject = {}): Promise<T> {

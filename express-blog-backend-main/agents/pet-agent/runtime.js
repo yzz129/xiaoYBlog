@@ -8,9 +8,11 @@ const { TOOL_DEFINITIONS, executeTool, performApprovedAction } = require("./tool
 const MAX_ITERATIONS = Math.min(Math.max(Number(process.env.PET_AGENT_MAX_STEPS) || 24, 8), 60);
 const MAX_TOOL_RETRIES = Math.min(Math.max(Number(process.env.PET_AGENT_MAX_RETRIES) || 3, 1), 5);
 const LEASE_SECONDS = Math.min(Math.max(Number(process.env.PET_AGENT_LEASE_SECONDS) || 90, 30), 600);
+const MAX_CONCURRENT_TASKS = Math.min(Math.max(Number(process.env.PET_AGENT_MAX_CONCURRENCY) || 3, 1), 12);
 const HEARTBEAT_MS = Math.max(10000, Math.floor(LEASE_SECONDS * 1000 / 3));
 const WORKER_ID = `${os.hostname()}:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
 const runningTasks = new Set();
+const pendingTasks = new Set();
 let scheduler = null;
 
 function compact(value, max = 120) {
@@ -379,8 +381,20 @@ async function runTask(taskId) {
     }
 }
 
+function drainQueue() {
+    while (runningTasks.size < MAX_CONCURRENT_TASKS && pendingTasks.size) {
+        const taskId = pendingTasks.values().next().value;
+        pendingTasks.delete(taskId);
+        runTask(taskId)
+            .catch((error) => console.error("[PetAgent] task failed", taskId, error))
+            .finally(drainQueue);
+    }
+}
+
 function kick(taskId) {
-    setImmediate(() => runTask(taskId).catch((error) => console.error("[PetAgent] task failed", taskId, error)));
+    if (runningTasks.has(taskId) || pendingTasks.has(taskId)) return;
+    pendingTasks.add(taskId);
+    setImmediate(drainQueue);
 }
 
 async function approveTask(task, approved) {
@@ -433,7 +447,7 @@ async function approveTask(task, approved) {
 
 async function poll() {
     try {
-        const tasks = await store.listRunnableTasks();
+        const tasks = await store.listRunnableTasks(Math.max(MAX_CONCURRENT_TASKS * 2, 4));
         tasks.forEach((task) => kick(task.id));
     } catch (error) {
         console.error("[PetAgent] scheduler poll failed:", error.message);

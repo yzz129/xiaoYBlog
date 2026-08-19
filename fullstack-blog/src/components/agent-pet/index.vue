@@ -34,6 +34,7 @@
             </transition>
 
             <button
+                ref="launcherButtonRef"
                 class="pet-launcher__orb"
                 type="button"
                 aria-label="打开小Y Agent；按住可以拖动"
@@ -78,7 +79,15 @@
         </transition>
 
         <transition name="agent-slide">
-            <aside v-if="isOpen" class="agent-drawer" aria-label="小Y Agent 任务助手">
+            <aside
+                v-if="isOpen"
+                ref="drawerRef"
+                class="agent-drawer"
+                role="dialog"
+                aria-modal="true"
+                aria-label="小Y Agent 任务助手"
+                tabindex="-1"
+            >
                 <header class="agent-header">
                     <div class="agent-header__identity">
                         <div class="agent-header__avatar"><img :src="mascot" alt="小Y" /></div>
@@ -290,6 +299,8 @@ const attachmentEnabled = ref(false);
 const attachmentUrl = ref("");
 const scrollArea = ref<HTMLElement | null>(null);
 const launcherRef = ref<HTMLElement | null>(null);
+const launcherButtonRef = ref<HTMLButtonElement | null>(null);
+const drawerRef = ref<HTMLElement | null>(null);
 const launcherPosition = ref<{ x: number; y: number } | null>(null);
 const viewportWidth = ref(0);
 const bubbleVisible = ref(true);
@@ -514,10 +525,41 @@ async function cancelTask() { if (activeTask.value) activeTask.value = props.pre
 
 async function toggleDrawer() {
     isOpen.value = !isOpen.value;
-    if (isOpen.value && props.authenticated && !props.preview) await loadTasks(true);
+    if (isOpen.value) {
+        if (props.authenticated && !props.preview) await loadTasks(true);
+        await nextTick();
+        drawerRef.value?.focus();
+    }
 }
-function closeDrawer() { isOpen.value = false; }
+async function closeDrawer() {
+    isOpen.value = false;
+    await nextTick();
+    launcherButtonRef.value?.focus();
+}
 function goToLogin() { closeDrawer(); router.push({ name: "Login" }); }
+
+function handleDrawerKeydown(event: KeyboardEvent) {
+    if (!isOpen.value) return;
+    if (event.key === "Escape") {
+        event.preventDefault();
+        closeDrawer();
+        return;
+    }
+    if (event.key !== "Tab" || !drawerRef.value) return;
+    const focusable = Array.from(
+        drawerRef.value.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+    ).filter((element) => element.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
 
 function clampPosition(x: number, y: number) {
     const width = launcherRef.value?.offsetWidth || LAUNCHER_SIZE;
@@ -671,6 +713,7 @@ onMounted(() => {
         localStorage.removeItem(POSITION_KEY);
     }
     window.addEventListener("resize", handleViewportResize);
+    window.addEventListener("keydown", handleDrawerKeydown);
     schedulePetMotion();
     scheduleBubbleAutoHide();
     if (props.authenticated && !props.preview) {
@@ -686,6 +729,7 @@ onBeforeUnmount(() => {
     clearMotionTimers();
     clearBubbleTimer();
     window.removeEventListener("resize", handleViewportResize);
+    window.removeEventListener("keydown", handleDrawerKeydown);
 });
 
 watch(

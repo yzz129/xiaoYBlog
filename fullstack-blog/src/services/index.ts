@@ -18,22 +18,23 @@ enum InnerCode {
 const api = axios.create({
     baseURL: "/api",
     timeout: 20000,
+    withCredentials: true,
 });
 
-function getToken(): string {
+function getCsrfToken(): string {
     if (typeof document === "undefined") {
         return "";
     }
-    return localStorage.getItem("token") || "";
+    return localStorage.getItem("csrfToken") || "";
 }
 
 api.defaults.headers.common["Content-Type"] = "application/x-www-form-urlencoded";
 api.defaults.transformRequest = (data) => qs.stringify(data, { encode: true });
 
 api.interceptors.request.use((config) => {
-    const token = getToken();
+    const token = getCsrfToken();
     if (token) {
-        config.headers["Authorization"] = `Bearer ${token}`;
+        config.headers["X-CSRF-Token"] = token;
     }
     return config;
 });

@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 
 const dbUtils = require("../../utils/db");
+const { emitAgentTaskUpdate } = require("../../utils/ws");
 
 let tablesReadyPromise = null;
 
@@ -351,7 +352,19 @@ async function addEvent(taskId, event) {
             serialize(event.data),
         ],
     });
-    return Number(results.insertId || 0);
+    const eventId = Number(results.insertId || 0);
+    const { results: tasks } = await dbUtils.query({
+        sql: "SELECT user_id, status, title, update_time AS updated_at FROM agent_task WHERE id = ? LIMIT 1",
+        values: [taskId],
+    });
+    if (tasks[0]) {
+        emitAgentTaskUpdate(tasks[0].user_id, {
+            taskId,
+            event: { id: eventId, ...event },
+            task: tasks[0],
+        });
+    }
+    return eventId;
 }
 
 module.exports = {

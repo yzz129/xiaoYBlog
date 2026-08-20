@@ -48,4 +48,12 @@ const agentLimiter = createLimiter({
     keyGenerator: userOrIpKey,
 });
 
-module.exports = { globalLimiter, authLimiter, uploadLimiter, agentLimiter };
+const messageLimiter = createLimiter({
+    windowMs: 10 * 1000,
+    limit: 8,
+    code: "429004",
+    message: "消息发送过于频繁，请稍后再试",
+    keyGenerator: userOrIpKey,
+});
+
+module.exports = { globalLimiter, authLimiter, uploadLimiter, agentLimiter, messageLimiter };

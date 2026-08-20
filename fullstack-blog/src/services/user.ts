@@ -2,6 +2,26 @@ import { ApiService } from "@/services/index";
 import { CommonResponse, LoginModel, PageResponse, QuerySearchModel, RecordResponse } from "@/bean/xhr";
 import { DirectMessageDTO, DirectMessageUnreadConversationDTO, UserDTO } from "@/bean/dto";
 
+export interface FriendRequestDTO {
+    id: number;
+    requester_id: number;
+    recipient_id: number;
+    status: "pending" | "accepted" | "rejected";
+    message?: string;
+    user_id: number;
+    username: string;
+    nick_name?: string;
+    avatar?: string;
+    create_time: string;
+}
+
+export interface UserPrivacyDTO {
+    allow_friend_requests: "everyone" | "following" | "none";
+    allow_direct_messages: "everyone" | "friends" | "none";
+    show_followers: number | boolean;
+    show_following: number | boolean;
+}
+
 class UserService extends ApiService {
     public login(params: LoginModel) {
         return this.$putJson<RecordResponse<UserDTO>>("login", params);
@@ -41,6 +61,39 @@ class UserService extends ApiService {
 
     public getFollowing(params: QuerySearchModel) {
         return this.$get<PageResponse<UserDTO>>("following", params);
+    }
+
+    public sendFriendRequest(id: number, message = "") {
+        return this.$postJson<CommonResponse<null>>(`friends/requests/${id}`, { message });
+    }
+
+    public acceptFriendRequest(requestId: number) {
+        return this.$postJson<CommonResponse<null>>(`friends/requests/${requestId}/accept`);
+    }
+
+    public rejectFriendRequest(requestId: number) {
+        return this.$postJson<CommonResponse<null>>(`friends/requests/${requestId}/reject`);
+    }
+
+    public getFriendRequests(box: "incoming" | "outgoing" = "incoming") {
+        return this.$get<CommonResponse<FriendRequestDTO[]>>("friends/requests", { box });
+    }
+
+    public removeFriend(id: number) {
+        return this.$del<CommonResponse<null>>(`friends/${id}`);
+    }
+
+    public getPrivacy() {
+        return this.$get<CommonResponse<UserPrivacyDTO>>("privacy");
+    }
+
+    public updatePrivacy(params: {
+        allowFriendRequests: UserPrivacyDTO["allow_friend_requests"];
+        allowDirectMessages: UserPrivacyDTO["allow_direct_messages"];
+        showFollowers: boolean;
+        showFollowing: boolean;
+    }) {
+        return this.$putJson<CommonResponse<null>>("privacy", params);
     }
 
     public getDirectMessages(targetUserId: number) {

@@ -8,11 +8,11 @@ export const useStore = defineStore("main", {
         isMenuVisible: false,
         commentUserInfo: JSON.parse(localStorage.getItem("commentUserInfo") || "null"),
         userInfo: JSON.parse(localStorage.getItem("userInfo") || "null") as UserDTO | null,
-        token: localStorage.getItem("token") || "",
+        csrfToken: localStorage.getItem("csrfToken") || "",
     }),
 
     getters: {
-        isAuthed: (state) => Boolean(state.token),
+        isAuthed: (state) => Boolean(state.userInfo),
     },
 
     actions: {
@@ -38,20 +38,21 @@ export const useStore = defineStore("main", {
             }
         },
 
-        setUserToken(token: string) {
-            this.token = token;
+        setCsrfToken(token: string) {
+            this.csrfToken = token;
             if (token) {
-                localStorage.setItem("token", token);
+                localStorage.setItem("csrfToken", token);
             } else {
-                localStorage.removeItem("token");
+                localStorage.removeItem("csrfToken");
             }
+            localStorage.removeItem("token");
         },
 
         async login(payload: LoginModel): Promise<UserDTO> {
             const response = await userService.login(payload);
             const userInfo = response.data as UserDTO;
             this.setUserInfo(userInfo);
-            this.setUserToken(userInfo?.token || "");
+            this.setCsrfToken(userInfo?.csrfToken || "");
             return userInfo;
         },
 
@@ -60,13 +61,14 @@ export const useStore = defineStore("main", {
         },
 
         async fetchCurrent(force = false): Promise<UserDTO | null> {
-            if (!force && this.userInfo && this.token) {
+            if (!force && this.userInfo) {
                 return this.userInfo;
             }
 
             const response = await userService.current();
             const currentUser = (response.data as UserDTO | null) || null;
             this.setUserInfo(currentUser);
+            this.setCsrfToken(currentUser?.csrfToken || "");
             return currentUser;
         },
 
@@ -81,7 +83,7 @@ export const useStore = defineStore("main", {
 
         clearUserSession() {
             this.setUserInfo(null);
-            this.setUserToken("");
+            this.setCsrfToken("");
         },
     },
 });

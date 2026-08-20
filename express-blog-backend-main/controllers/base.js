@@ -2,8 +2,6 @@ const express = require("express");
 const router = express.Router();
 const errcode = require("../utils/errcode");
 const authMap = require("../permissions/auth");
-const jwt = require("jsonwebtoken");
-const config = require("../config");
 
 /**
  * base controller
@@ -32,36 +30,25 @@ router.use(function(req, res, next) {
         return;
     }
 
-    const token = req.headers.authorization ? req.headers.authorization.replace("Bearer ", "") : undefined;
-    if (!token) {
+    const currentUser = req.session?.user;
+    if (!currentUser) {
         res.send({
             ...errcode.AUTH.UNAUTHORIZED,
         });
         return;
     }
 
-    jwt.verify(token, config.jwt.secret, (err, payload) => {
-        if (err) {
-            console.error(err);
-            res.send({
-                ...errcode.AUTH.UNAUTHORIZED,
-            });
-            return;
-        }
+    const hasPermission = currentUser.roleName === authority.role ||
+        (authority.role === "user" && currentUser.roleName === "admin");
+    if (!hasPermission) {
+        res.send({
+            ...errcode.AUTH.FORBIDDEN,
+        });
+        return;
+    }
 
-        const hasPermission =
-            payload.roleName === authority.role || (authority.role === "user" && payload.roleName === "admin");
-
-        if (!hasPermission) {
-            res.send({
-                ...errcode.AUTH.FORBIDDEN,
-            });
-            return;
-        }
-
-        req.currentUser = payload;
-        next();
-    });
+    req.currentUser = currentUser;
+    next();
 });
 
 module.exports = router;

@@ -124,23 +124,13 @@ module.exports = {
         region: process.env.MINIO_REGION || "us-east-1",
         publicBaseUrl: process.env.MINIO_PUBLIC_BASE_URL || "",
     },
-    auth: {
-        cookieName: process.env.AUTH_COOKIE_NAME || "blog_token",
-        csrfCookieName: process.env.AUTH_CSRF_COOKIE_NAME || "blog_csrf",
-        sameSite: process.env.AUTH_COOKIE_SAMESITE || "Lax",
-        secure: toBoolean(process.env.AUTH_COOKIE_SECURE, false),
-    },
     session: {
-        secret: process.env.SESSION_SECRET || process.env.JWT_SECRET || "blog-session-development-only",
+        secret: process.env.SESSION_SECRET || "blog-session-development-only",
         cookieName: process.env.SESSION_COOKIE_NAME || "blog_session",
         sameSite: process.env.SESSION_COOKIE_SAMESITE || "Lax",
         secure: toBoolean(process.env.SESSION_COOKIE_SECURE, false),
         maxAgeMs: toNumber(process.env.SESSION_COOKIE_MAX_AGE_MS, 21600000),
         store: process.env.SESSION_STORE || (nodeEnv === "test" ? "memory" : "redis"),
         prefix: process.env.SESSION_REDIS_PREFIX || "blog:session:",
-    },
-    jwt: {
-        secret: process.env.JWT_SECRET || "blog-secret-key",
-        expireDays: toNumber(process.env.JWT_EXPIRE_DAYS, 3),
     },
 };

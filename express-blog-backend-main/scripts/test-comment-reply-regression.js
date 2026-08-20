@@ -1,8 +1,10 @@
-const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const signature = require("cookie-signature");
 
 const config = require("../config");
 const dbUtils = require("../utils/db");
 const { ensureContentAuthorColumns } = require("../utils/content-schema");
+const { createSessionStore } = require("../utils/session-store");
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://127.0.0.1:8002";
 
@@ -25,21 +27,17 @@ const request = async (path, options = {}) => {
     return data;
 };
 
-const createToken = (user) =>
-    jwt.sign(
-        {
-            id: user.id,
-            userName: user.username,
-            username: user.username,
-            nick_name: user.nick_name || "",
-            roleId: user.role === "admin" ? 1 : 2,
-            role_id: user.role === "admin" ? 1 : 2,
-            roleName: user.role || "user",
-            role_name: user.role || "user",
-        },
-        config.jwt.secret,
-        { expiresIn: "1h" }
-    );
+const createSessionCookie = async (user) => {
+    const store = createSessionStore();
+    const sid = crypto.randomUUID();
+    await new Promise((resolve, reject) => store.set(sid, {
+        cookie: { maxAge: config.session.maxAgeMs, httpOnly: true, path: "/" },
+        user: { id: user.id, userId: user.id, userName: user.username, username: user.username, roleName: user.role || "user" },
+        csrfToken: crypto.randomBytes(32).toString("hex"),
+    }, (error) => error ? reject(error) : resolve()));
+    const signed = `s:${signature.sign(sid, config.session.secret)}`;
+    return { cookie: `${config.session.cookieName}=${encodeURIComponent(signed)}`, store, sid };
+};
 
 async function main() {
     let commentId = 0;
@@ -125,7 +123,7 @@ async function main() {
         });
         pendingReplyId = Number(pendingReplyInsert.results.insertId);
 
-        const token = createToken(user);
+        const session = await createSessionCookie(user);
 
         const commentPage = await request(`/comment/page?pageNo=1&pageSize=20&id=${article.id}`);
         assert(commentPage.code === "0", "comment page code is not 0");
@@ -144,7 +142,7 @@ async function main() {
 
         const pendingReplyPage = await request("/reply/unreviewd_reply_page?pageNo=1&pageSize=20&type=1", {
             headers: {
-                Authorization: `Bearer ${token}`,
+                Cookie: session.cookie,
             },
         });
         assert(pendingReplyPage.code === "0", "pending reply page code is not 0");
@@ -152,6 +150,11 @@ async function main() {
             (pendingReplyPage.data || []).some((item) => item.id === pendingReplyId),
             "pending reply not found in unreviewed reply page"
         );
+
+        await new Promise((resolve) => session.store.destroy(session.sid, resolve));
+        if (session.store.redisClient?.isOpen) {
+            await session.store.redisClient.quit();
+        }
 
         console.log("comment/reply regression test passed");
     } finally {

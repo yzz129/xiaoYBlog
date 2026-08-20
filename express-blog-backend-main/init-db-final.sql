@@ -127,6 +127,51 @@ CONSTRAINT reply_ibfk_2 FOREIGN KEY (comment_id) REFERENCES comments (id) ON DEL
 CONSTRAINT reply_ibfk_3 FOREIGN KEY (author_id) REFERENCES user (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Production social graph: follows remain subscriptions; friendships require requests.
+CREATE TABLE IF NOT EXISTS user_follow (
+id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, follower_id INT NOT NULL, following_id INT NOT NULL,
+create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id),
+UNIQUE KEY uk_user_follow (follower_id, following_id), KEY idx_user_follow_following (following_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS user_friend_request (
+id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, requester_id INT NOT NULL, recipient_id INT NOT NULL,
+status ENUM('pending','accepted','rejected','cancelled') NOT NULL DEFAULT 'pending', message VARCHAR(255) NOT NULL DEFAULT '',
+create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+PRIMARY KEY (id), UNIQUE KEY uk_friend_request_pair (requester_id, recipient_id),
+KEY idx_friend_request_recipient_status (recipient_id, status), KEY idx_friend_request_requester_status (requester_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS user_friendship (
+user_low_id INT NOT NULL, user_high_id INT NOT NULL, create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+PRIMARY KEY (user_low_id, user_high_id), KEY idx_friendship_high (user_high_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS user_block (
+blocker_id INT NOT NULL, blocked_id INT NOT NULL, create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+PRIMARY KEY (blocker_id, blocked_id), KEY idx_user_block_blocked (blocked_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS user_privacy (
+user_id INT NOT NULL, allow_friend_requests ENUM('everyone','following','none') NOT NULL DEFAULT 'everyone',
+allow_direct_messages ENUM('everyone','friends','none') NOT NULL DEFAULT 'friends',
+show_followers TINYINT(1) NOT NULL DEFAULT 1, show_following TINYINT(1) NOT NULL DEFAULT 1,
+update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS user_direct_message (
+id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, sender_id INT NOT NULL, receiver_id INT NOT NULL, content TEXT NOT NULL,
+read_time DATETIME NULL, create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id),
+KEY idx_direct_message_sender (sender_id), KEY idx_direct_message_receiver (receiver_id),
+KEY idx_direct_message_pair_time (sender_id, receiver_id, create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS article_view_dedup (
+article_id INT NOT NULL, viewer_hash CHAR(64) NOT NULL, view_bucket BIGINT NOT NULL,
+create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (article_id, viewer_hash, view_bucket),
+KEY idx_article_view_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Insert admin user
 INSERT INTO user (username, password, nick_name, email, intro, role) VALUES
 ('admin', '$2b$10$e3q3QZ9V8Q0e3q3QZ9V8Qe3q3QZ9V8Qe3q3QZ9V8Qe3q3QZ9V8Qe', 'Administrator', 'admin@example.com', 'Site Administrator', 'admin');

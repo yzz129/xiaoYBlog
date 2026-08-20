@@ -1,12 +1,11 @@
 const express = require("express");
-const jwt = require("jsonwebtoken");
 
 const router = express.Router();
 
 const indexSQL = require("../sql");
-const config = require("../config");
 const dbUtils = require("../utils/db");
 const errcode = require("../utils/errcode");
+const { recordArticleView } = require("../utils/article-view");
 
 const DEFAULT_PAGE_NO = 1;
 const DEFAULT_PAGE_SIZE = 10;
@@ -117,30 +116,8 @@ const sendServerError = (res, error, fallbackCode = "500000", fallbackMsg = "ser
     });
 };
 
-const getTokenFromRequest = (req) => {
-    const authorization = req.headers.authorization;
-    if (authorization?.startsWith("Bearer ")) {
-        return authorization.replace("Bearer ", "");
-    }
-
-    return "";
-};
-
 const getCurrentUserFromRequest = (req) => {
-    if (req.currentUser) {
-        return req.currentUser;
-    }
-
-    const token = getTokenFromRequest(req);
-    if (!token) {
-        return null;
-    }
-
-    try {
-        return jwt.verify(token, config.jwt.secret);
-    } catch (_error) {
-        return null;
-    }
+    return req.currentUser || req.session?.user || null;
 };
 
 const isAdminUser = (user) => user?.role_name === "admin" || user?.roleName === "admin";
@@ -313,12 +290,17 @@ router.get("/neighbors", async (req, res) => {
 
 router.put("/update_read_num", async (req, res) => {
     try {
-        await dbUtils.query({
-            sql: indexSQL.UpdateReadSum,
-            values: [toNumber(req.body.id, 0)],
-        });
+        const result = await recordArticleView(req, toNumber(req.body.id, 0));
+        res.send({ code: "0", data: result });
+    } catch (error) {
+        sendServerError(res, error, "008001", "failed to update read count");
+    }
+});
 
-        sendCode(res, "0");
+router.post("/:id/view", async (req, res) => {
+    try {
+        const result = await recordArticleView(req, toNumber(req.params.id, 0));
+        res.send({ code: "0", data: result });
     } catch (error) {
         sendServerError(res, error, "008001", "failed to update read count");
     }

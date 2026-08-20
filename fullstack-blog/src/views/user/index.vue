@@ -22,7 +22,13 @@
                             <a-button type="primary" :loading="followLoading" @click="toggleFollow">
                                 {{ profile.is_following ? "取消关注" : "关注" }}
                             </a-button>
+                            <a-button :loading="friendLoading" :disabled="profile.friendship_status === 'outgoing'" @click="handleFriendAction">
+                                {{ friendActionText }}
+                            </a-button>
                             <a-button @click="goToPrivateChat">私聊</a-button>
+                        </div>
+                        <div v-else class="user-actions">
+                            <a-button @click="openSocialSettings">好友与隐私</a-button>
                         </div>
 
                         <p class="user-meta">加入时间：{{ joinedTime }}</p>
@@ -89,12 +95,52 @@
                     <a-empty v-else :description="articleEmptyText" />
                 </a-skeleton>
             </section>
+
+            <a-modal v-model:open="socialSettingsOpen" title="好友与隐私" :footer="null" width="560px">
+                <a-spin :spinning="socialSettingsLoading">
+                    <div class="privacy-form">
+                        <label>
+                            <span>谁可以申请加我为好友</span>
+                            <a-select v-model:value="privacyForm.allowFriendRequests">
+                                <a-select-option value="everyone">所有人</a-select-option>
+                                <a-select-option value="following">仅我关注的人</a-select-option>
+                                <a-select-option value="none">任何人都不可以</a-select-option>
+                            </a-select>
+                        </label>
+                        <label>
+                            <span>谁可以给我发私信</span>
+                            <a-select v-model:value="privacyForm.allowDirectMessages">
+                                <a-select-option value="everyone">所有人</a-select-option>
+                                <a-select-option value="friends">仅好友</a-select-option>
+                                <a-select-option value="none">任何人都不可以</a-select-option>
+                            </a-select>
+                        </label>
+                        <div class="privacy-switch"><span>公开粉丝数</span><a-switch v-model:checked="privacyForm.showFollowers" /></div>
+                        <div class="privacy-switch"><span>公开关注数</span><a-switch v-model:checked="privacyForm.showFollowing" /></div>
+                        <a-button type="primary" :loading="savingPrivacy" @click="savePrivacy">保存隐私设置</a-button>
+                    </div>
+
+                    <div class="friend-requests">
+                        <h3>待处理好友申请</h3>
+                        <div v-for="request in pendingFriendRequests" :key="request.id" class="friend-request-item">
+                            <img :src="resolveAvatar(request.avatar, defaultAvatar)" :alt="request.nick_name || request.username" />
+                            <div>
+                                <strong>{{ request.nick_name || request.username }}</strong>
+                                <small v-if="request.message">{{ request.message }}</small>
+                            </div>
+                            <a-button size="small" type="primary" @click="resolveIncomingRequest(request.id, true)">接受</a-button>
+                            <a-button size="small" danger @click="resolveIncomingRequest(request.id, false)">拒绝</a-button>
+                        </div>
+                        <a-empty v-if="!pendingFriendRequests.length" :image="false" description="暂无待处理申请" />
+                    </div>
+                </a-spin>
+            </a-modal>
         </template>
     </base-layout>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { message } from "ant-design-vue";
 import { useRoute, useRouter } from "vue-router";
 
@@ -103,7 +149,7 @@ import CardArticle from "@/components/card/card-article.vue";
 import DoodleIcon from "@/components/doodle-icon.vue";
 import { useAsyncLoading } from "@/hooks/async";
 import { articleService } from "@/services/article";
-import { userService } from "@/services/user";
+import { FriendRequestDTO, userService } from "@/services/user";
 import { useStore } from "@/stores";
 import { defaultAvatar, resolveAvatar } from "@/utils/avatar";
 import { format } from "@/utils/date-utils";
@@ -119,6 +165,16 @@ const profile = ref<UserDTO | null>(null);
 const articles = ref<ArticleDTO[]>([]);
 const total = ref(0);
 const articleKeyword = ref("");
+const socialSettingsOpen = ref(false);
+const socialSettingsLoading = ref(false);
+const savingPrivacy = ref(false);
+const pendingFriendRequests = ref<FriendRequestDTO[]>([]);
+const privacyForm = reactive({
+    allowFriendRequests: "everyone" as "everyone" | "following" | "none",
+    allowDirectMessages: "friends" as "everyone" | "friends" | "none",
+    showFollowers: true,
+    showFollowing: true,
+});
 
 let articleSearchTimer: number | null = null;
 
@@ -173,6 +229,12 @@ const userAvatar = computed(() => resolveAvatar(profile.value?.avatar, defaultAv
 const articleEmptyText = computed(() =>
     articleKeyword.value.trim() ? "没有找到匹配的文章" : isSelf.value ? "你还没有公开文章" : "暂无公开文章"
 );
+const friendActionText = computed(() => ({
+    friends: "解除好友",
+    outgoing: "申请已发送",
+    incoming: "接受好友",
+    none: "加好友",
+}[profile.value?.friendship_status || "none"]));
 
 const handleToggleFollow = async () => {
     if (!store.isAuthed) {
@@ -200,6 +262,71 @@ const handleToggleFollow = async () => {
 };
 
 const { trigger: toggleFollow, loading: followLoading } = useAsyncLoading(handleToggleFollow);
+
+const handleFriendActionImpl = async () => {
+    if (!store.isAuthed) {
+        message.warning("请先登录后再添加好友");
+        router.push("/login");
+        return;
+    }
+    if (!profile.value) return;
+    if (profile.value.friendship_status === "friends") {
+        await userService.removeFriend(profile.value.id);
+        profile.value.friendship_status = "none";
+        message.success("已解除好友关系");
+    } else if (profile.value.friendship_status === "incoming" && profile.value.friend_request_id) {
+        await userService.acceptFriendRequest(profile.value.friend_request_id);
+        profile.value.friendship_status = "friends";
+        message.success("已成为好友");
+    } else if (profile.value.friendship_status === "none") {
+        await userService.sendFriendRequest(profile.value.id);
+        profile.value.friendship_status = "outgoing";
+        message.success("好友申请已发送");
+    }
+};
+const { trigger: handleFriendAction, loading: friendLoading } = useAsyncLoading(handleFriendActionImpl);
+
+const openSocialSettings = async () => {
+    socialSettingsOpen.value = true;
+    socialSettingsLoading.value = true;
+    try {
+        const [privacyResponse, requestResponse] = await Promise.all([
+            userService.getPrivacy(),
+            userService.getFriendRequests("incoming"),
+        ]);
+        const privacy = privacyResponse.data;
+        if (privacy) {
+            privacyForm.allowFriendRequests = privacy.allow_friend_requests;
+            privacyForm.allowDirectMessages = privacy.allow_direct_messages;
+            privacyForm.showFollowers = Boolean(privacy.show_followers);
+            privacyForm.showFollowing = Boolean(privacy.show_following);
+        }
+        pendingFriendRequests.value = (requestResponse.data || []).filter((item) => item.status === "pending");
+    } finally {
+        socialSettingsLoading.value = false;
+    }
+};
+
+const savePrivacy = async () => {
+    savingPrivacy.value = true;
+    try {
+        await userService.updatePrivacy({ ...privacyForm });
+        if (profile.value) {
+            profile.value.follower_count_private = !privacyForm.showFollowers;
+            profile.value.following_count_private = !privacyForm.showFollowing;
+        }
+        message.success("隐私设置已保存");
+    } finally {
+        savingPrivacy.value = false;
+    }
+};
+
+const resolveIncomingRequest = async (requestId: number, accept: boolean) => {
+    if (accept) await userService.acceptFriendRequest(requestId);
+    else await userService.rejectFriendRequest(requestId);
+    pendingFriendRequests.value = pendingFriendRequests.value.filter((item) => item.id !== requestId);
+    message.success(accept ? "已接受好友申请" : "已拒绝好友申请");
+};
 
 const goToPrivateChat = () => {
     if (!profile.value) {
@@ -366,6 +493,61 @@ const goToPrivateChat = () => {
     }
 }
 
+.privacy-form {
+    display: grid;
+    gap: 16px;
+
+    label {
+        display: grid;
+        gap: 8px;
+    }
+
+    .ant-select {
+        width: 100%;
+    }
+}
+
+.privacy-switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.friend-requests {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #eef2f7;
+
+    h3 {
+        margin-bottom: 14px;
+    }
+}
+
+.friend-request-item {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+
+    img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    strong,
+    small {
+        display: block;
+    }
+
+    small {
+        margin-top: 2px;
+        color: #6b7280;
+    }
+}
+
 @media screen and (max-width: 767px) {
     .user-profile {
         flex-direction: column;
@@ -393,6 +575,14 @@ const goToPrivateChat = () => {
 
     .article-search {
         width: 100%;
+    }
+
+    .friend-request-item {
+        grid-template-columns: 40px minmax(0, 1fr);
+
+        .ant-btn {
+            grid-column: span 1;
+        }
     }
 }
 </style>

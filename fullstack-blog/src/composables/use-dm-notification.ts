@@ -66,9 +66,7 @@ export function useDmNotification() {
         socket.value = io(`${endpoint}/notify`, {
             path: "/socket.io",
             transports: ["websocket", "polling"],
-            auth: {
-                token: store.token,
-            },
+            withCredentials: true,
         });
 
         socket.value.on("dm:unread-summary", (payload: { total_unread: number; conversations: DirectMessageUnreadConversationDTO[] }) => {

@@ -1,5 +1,4 @@
 const express = require("express");
-const jwt = require("jsonwebtoken");
 
 const router = express.Router();
 
@@ -7,7 +6,11 @@ const config = require("../config");
 const dbUtils = require("../utils/db");
 const emailHandler = require("../utils/email");
 const { hashCredential, verifyCredential } = require("../utils/password");
-const { emitDirectMessageToUsers, emitUnreadSummaryToUser } = require("../utils/ws");
+const { disconnectUserSockets, emitDirectMessageToUsers, emitUnreadSummaryToUser } = require("../utils/ws");
+const { destroySession, establishSession } = require("../utils/auth");
+const { moderateContent } = require("../utils/content-moderation");
+const { messageLimiter } = require("../utils/rate-limit");
+const { areFriends, canDirectMessage, ensureSocialSchema, getPrivacy, isBlocked, pair } = require("../utils/social");
 
 const DEFAULT_PAGE_NO = 1;
 const DEFAULT_PAGE_SIZE = 10;
@@ -59,26 +62,6 @@ const ensureColumnExists = async (tableName, columnName, columnDefinition) => {
     });
 };
 
-const buildToken = (user) => {
-    const roleName = user.role || "user";
-    const roleId = roleName === "admin" ? 1 : 2;
-
-    return jwt.sign(
-        {
-            id: user.id,
-            userName: user.username,
-            username: user.username,
-            nick_name: user.nick_name || "",
-            roleId,
-            role_id: roleId,
-            roleName,
-            role_name: roleName,
-        },
-        config.jwt.secret,
-        { expiresIn: `${config.jwt.expireDays}d` }
-    );
-};
-
 const formatUserRecord = (user) => {
     if (!user) {
         return null;
@@ -103,30 +86,8 @@ const formatUserRecord = (user) => {
     };
 };
 
-const getTokenFromRequest = (req) => {
-    const authorization = req.headers.authorization;
-    if (authorization?.startsWith("Bearer ")) {
-        return authorization.replace("Bearer ", "");
-    }
-
-    return "";
-};
-
 const getOptionalAuthUser = (req) => {
-    if (req.currentUser) {
-        return req.currentUser;
-    }
-
-    const token = getTokenFromRequest(req);
-    if (!token) {
-        return null;
-    }
-
-    try {
-        return jwt.verify(token, config.jwt.secret);
-    } catch (_error) {
-        return null;
-    }
+    return req.currentUser || req.session?.user || null;
 };
 
 const getCurrentUserId = (req) => toNumber(req.currentUser?.id, 0);
@@ -199,6 +160,7 @@ const ensureSocialTables = async () => {
     }
 
     await socialTablesReadyPromise;
+    await ensureSocialSchema();
     await ensureColumnExists("user_direct_message", "read_time", "DATETIME NULL");
     return socialTablesReadyPromise;
 };
@@ -236,15 +198,38 @@ const buildPublicUserProfile = async (userId, currentUserId) => {
     }
 
     let isFollowing = false;
+    let friendshipStatus = "none";
+    let friendRequestId = null;
+    let blocked = false;
     if (currentUserId && currentUserId !== userId) {
         const { results } = await dbUtils.query({
             sql: "SELECT id FROM user_follow WHERE follower_id = ? AND following_id = ? LIMIT 1",
             values: [currentUserId, userId],
         });
         isFollowing = results.length > 0;
+
+        blocked = await isBlocked(currentUserId, userId);
+        if (await areFriends(currentUserId, userId)) {
+            friendshipStatus = "friends";
+        } else {
+            const { results: requests } = await dbUtils.query({
+                sql: `SELECT id, requester_id, recipient_id FROM user_friend_request
+                      WHERE ((requester_id = ? AND recipient_id = ?) OR (requester_id = ? AND recipient_id = ?))
+                        AND status = 'pending' LIMIT 1`,
+                values: [currentUserId, userId, userId, currentUserId],
+            });
+            if (requests[0]) {
+                friendRequestId = Number(requests[0].id || 0) || null;
+                friendshipStatus = Number(requests[0].requester_id) === Number(currentUserId) ? "outgoing" : "incoming";
+            }
+        }
     }
 
     const stats = statsRows[0] || {};
+    const privacy = await getPrivacy(userId);
+    const isOwner = Number(currentUserId || 0) === Number(userId);
+    const canViewFollowers = isOwner || Boolean(privacy.show_followers);
+    const canViewFollowing = isOwner || Boolean(privacy.show_following);
 
     return {
         id: user.id,
@@ -256,9 +241,14 @@ const buildPublicUserProfile = async (userId, currentUserId) => {
         role_name: user.role || "user",
         create_time: user.create_time || null,
         article_count: Number(stats.article_count || 0),
-        follower_count: Number(stats.follower_count || 0),
-        following_count: Number(stats.following_count || 0),
+        follower_count: canViewFollowers ? Number(stats.follower_count || 0) : null,
+        following_count: canViewFollowing ? Number(stats.following_count || 0) : null,
+        follower_count_private: !canViewFollowers,
+        following_count_private: !canViewFollowing,
         is_following: isFollowing,
+        friendship_status: friendshipStatus,
+        friend_request_id: friendRequestId,
+        is_blocked: blocked,
         categories: categories.map((item) => ({
             id: item.id,
             category_name: item.category_name,
@@ -353,13 +343,13 @@ router.put("/login", async (req, res) => {
         );
 
         const latestUser = await getUserById(connection, user.id);
-        const token = buildToken(user);
+        await establishSession(req, latestUser);
 
         res.send({
             code: "0",
             data: {
                 ...formatUserRecord(latestUser),
-                token,
+                csrfToken: req.session.csrfToken,
             },
         });
     } catch (error) {
@@ -369,8 +359,16 @@ router.put("/login", async (req, res) => {
     }
 });
 
-router.put("/logout", (_req, res) => {
-    res.send({ code: "0" });
+router.put("/logout", async (req, res) => {
+    try {
+        const userId = Number(req.session?.user?.id || 0);
+        await destroySession(req);
+        disconnectUserSockets(userId);
+        res.clearCookie(config.session.cookieName, { path: "/" });
+        res.send({ code: "0" });
+    } catch (error) {
+        handleServerError(res, error, "001004", "退出登录失败");
+    }
 });
 
 router.get("/current", async (req, res) => {
@@ -385,7 +383,10 @@ router.get("/current", async (req, res) => {
 
         res.send({
             code: "0",
-            data: formatUserRecord(user),
+            data: {
+                ...formatUserRecord(user),
+                csrfToken: req.session.csrfToken,
+            },
         });
     } catch (error) {
         handleServerError(res, error, "001005", "获取当前用户失败");
@@ -588,6 +589,237 @@ router.get("/following", async (req, res) => {
     }
 });
 
+router.post("/friends/requests/:id", async (req, res) => {
+    const requesterId = getCurrentUserId(req);
+    const recipientId = toNumber(req.params.id, 0);
+    const message = normalizeString(req.body?.message).slice(0, 255);
+    if (!recipientId || requesterId === recipientId) {
+        sendError(res, "001023", "好友申请对象无效");
+        return;
+    }
+
+    try {
+        await ensureSocialTables();
+        if (!(await requireUserExists(recipientId))) {
+            sendError(res, "001011", "用户不存在");
+            return;
+        }
+        if (await isBlocked(requesterId, recipientId)) {
+            sendError(res, "001024", "无法向该用户发送好友申请");
+            return;
+        }
+        if (await areFriends(requesterId, recipientId)) {
+            sendError(res, "001025", "你们已经是好友");
+            return;
+        }
+
+        const privacy = await getPrivacy(recipientId);
+        if (privacy.allow_friend_requests === "none") {
+            sendError(res, "001026", "对方已关闭好友申请");
+            return;
+        }
+        if (privacy.allow_friend_requests === "following") {
+            const { results: followingRows } = await dbUtils.query({
+                sql: "SELECT 1 FROM user_follow WHERE follower_id = ? AND following_id = ? LIMIT 1",
+                values: [recipientId, requesterId],
+            });
+            if (!followingRows.length) {
+                sendError(res, "001027", "需要先关注对方才能发送好友申请");
+                return;
+            }
+        }
+
+        await dbUtils.query({
+            sql: `INSERT INTO user_friend_request (requester_id, recipient_id, status, message, create_time, update_time)
+                  VALUES (?, ?, 'pending', ?, ?, ?)
+                  ON DUPLICATE KEY UPDATE status = 'pending', message = VALUES(message), update_time = VALUES(update_time)`,
+            values: [requesterId, recipientId, message, new Date(), new Date()],
+        });
+        res.send({ code: "0", msg: "好友申请已发送" });
+    } catch (error) {
+        handleServerError(res, error, "001028", "发送好友申请失败");
+    }
+});
+
+router.get("/friends/requests", async (req, res) => {
+    const userId = getCurrentUserId(req);
+    const box = req.query.box === "outgoing" ? "outgoing" : "incoming";
+    const ownerField = box === "outgoing" ? "fr.requester_id" : "fr.recipient_id";
+    const peerField = box === "outgoing" ? "fr.recipient_id" : "fr.requester_id";
+    try {
+        await ensureSocialTables();
+        const { results } = await dbUtils.query({
+            sql: `SELECT fr.id, fr.requester_id, fr.recipient_id, fr.status, fr.message, fr.create_time, fr.update_time,
+                         u.id AS user_id, u.username, u.nick_name, u.avatar, u.intro
+                  FROM user_friend_request fr INNER JOIN user u ON u.id = ${peerField}
+                  WHERE ${ownerField} = ? ORDER BY (fr.status = 'pending') DESC, fr.update_time DESC LIMIT 200`,
+            values: [userId],
+        });
+        res.send({ code: "0", data: results });
+    } catch (error) {
+        handleServerError(res, error, "001029", "获取好友申请失败", []);
+    }
+});
+
+async function resolveFriendRequest(req, res, status) {
+    const requestId = toNumber(req.params.id, 0);
+    const userId = getCurrentUserId(req);
+    const connection = await dbUtils.getConnection(res);
+    try {
+        await ensureSocialTables();
+        await connection.beginTransaction();
+        const { results } = await dbUtils.query({
+            sql: "SELECT * FROM user_friend_request WHERE id = ? AND recipient_id = ? AND status = 'pending' FOR UPDATE",
+            values: [requestId, userId],
+        }, connection, false);
+        const request = results[0];
+        if (!request) {
+            await connection.rollback();
+            sendError(res, "001030", "好友申请不存在或已处理");
+            return;
+        }
+        if (status === "accepted") {
+            if (await isBlocked(request.requester_id, request.recipient_id)) {
+                await connection.rollback();
+                sendError(res, "001024", "无法接受该好友申请");
+                return;
+            }
+            const { low, high } = pair(request.requester_id, request.recipient_id);
+            await dbUtils.query({
+                sql: "INSERT IGNORE INTO user_friendship (user_low_id, user_high_id, create_time) VALUES (?, ?, ?)",
+                values: [low, high, new Date()],
+            }, connection, false);
+        }
+        await dbUtils.query({
+            sql: "UPDATE user_friend_request SET status = ?, update_time = ? WHERE id = ?",
+            values: [status, new Date(), requestId],
+        }, connection, false);
+        await connection.commit();
+        res.send({ code: "0", msg: status === "accepted" ? "已成为好友" : "已拒绝好友申请" });
+    } catch (error) {
+        await connection.rollback().catch(() => {});
+        handleServerError(res, error, "001031", "处理好友申请失败");
+    } finally {
+        connection.release();
+    }
+}
+
+router.post("/friends/requests/:id/accept", (req, res) => resolveFriendRequest(req, res, "accepted"));
+router.post("/friends/requests/:id/reject", (req, res) => resolveFriendRequest(req, res, "rejected"));
+
+router.get("/friends", async (req, res) => {
+    const userId = getCurrentUserId(req);
+    try {
+        await ensureSocialTables();
+        const { results } = await dbUtils.query({
+            sql: `SELECT u.id, u.username, u.nick_name, u.avatar, u.intro, f.create_time
+                  FROM user_friendship f
+                  INNER JOIN user u ON u.id = IF(f.user_low_id = ?, f.user_high_id, f.user_low_id)
+                  WHERE f.user_low_id = ? OR f.user_high_id = ?
+                  ORDER BY f.create_time DESC`,
+            values: [userId, userId, userId],
+        });
+        res.send({ code: "0", data: results, total: results.length });
+    } catch (error) {
+        handleServerError(res, error, "001032", "获取好友列表失败", [], 0);
+    }
+});
+
+router.delete("/friends/:id", async (req, res) => {
+    const userId = getCurrentUserId(req);
+    const targetId = toNumber(req.params.id, 0);
+    const { low, high } = pair(userId, targetId);
+    try {
+        await ensureSocialTables();
+        await dbUtils.query({ sql: "DELETE FROM user_friendship WHERE user_low_id = ? AND user_high_id = ?", values: [low, high] });
+        res.send({ code: "0", msg: "已解除好友关系" });
+    } catch (error) {
+        handleServerError(res, error, "001033", "解除好友关系失败");
+    }
+});
+
+router.get("/privacy", async (req, res) => {
+    try {
+        res.send({ code: "0", data: await getPrivacy(getCurrentUserId(req)) });
+    } catch (error) {
+        handleServerError(res, error, "001034", "获取隐私设置失败");
+    }
+});
+
+router.put("/privacy", async (req, res) => {
+    const friendValues = ["everyone", "following", "none"];
+    const dmValues = ["everyone", "friends", "none"];
+    const allowFriendRequests = friendValues.includes(req.body?.allowFriendRequests) ? req.body.allowFriendRequests : "everyone";
+    const allowDirectMessages = dmValues.includes(req.body?.allowDirectMessages) ? req.body.allowDirectMessages : "friends";
+    const showFollowers = req.body?.showFollowers === false ? 0 : 1;
+    const showFollowing = req.body?.showFollowing === false ? 0 : 1;
+    try {
+        await ensureSocialTables();
+        await dbUtils.query({
+            sql: `INSERT INTO user_privacy (user_id, allow_friend_requests, allow_direct_messages, show_followers, show_following)
+                  VALUES (?, ?, ?, ?, ?)
+                  ON DUPLICATE KEY UPDATE allow_friend_requests = VALUES(allow_friend_requests),
+                    allow_direct_messages = VALUES(allow_direct_messages), show_followers = VALUES(show_followers),
+                    show_following = VALUES(show_following)`,
+            values: [getCurrentUserId(req), allowFriendRequests, allowDirectMessages, showFollowers, showFollowing],
+        });
+        res.send({ code: "0", msg: "隐私设置已保存" });
+    } catch (error) {
+        handleServerError(res, error, "001035", "保存隐私设置失败");
+    }
+});
+
+router.get("/blocks", async (req, res) => {
+    try {
+        await ensureSocialTables();
+        const { results } = await dbUtils.query({
+            sql: `SELECT u.id, u.username, u.nick_name, u.avatar, b.create_time FROM user_block b
+                  INNER JOIN user u ON u.id = b.blocked_id WHERE b.blocker_id = ? ORDER BY b.create_time DESC`,
+            values: [getCurrentUserId(req)],
+        });
+        res.send({ code: "0", data: results });
+    } catch (error) {
+        handleServerError(res, error, "001036", "获取黑名单失败", []);
+    }
+});
+
+router.post("/blocks/:id", async (req, res) => {
+    const userId = getCurrentUserId(req);
+    const blockedId = toNumber(req.params.id, 0);
+    if (!blockedId || blockedId === userId) {
+        sendError(res, "001037", "拉黑对象无效");
+        return;
+    }
+    const { low, high } = pair(userId, blockedId);
+    const connection = await dbUtils.getConnection(res);
+    try {
+        await ensureSocialTables();
+        await connection.beginTransaction();
+        await dbUtils.query({ sql: "INSERT IGNORE INTO user_block (blocker_id, blocked_id, create_time) VALUES (?, ?, ?)", values: [userId, blockedId, new Date()] }, connection, false);
+        await dbUtils.query({ sql: "DELETE FROM user_friendship WHERE user_low_id = ? AND user_high_id = ?", values: [low, high] }, connection, false);
+        await dbUtils.query({ sql: `UPDATE user_friend_request SET status = 'cancelled', update_time = ?
+                                    WHERE ((requester_id = ? AND recipient_id = ?) OR (requester_id = ? AND recipient_id = ?)) AND status = 'pending'`,
+                              values: [new Date(), userId, blockedId, blockedId, userId] }, connection, false);
+        await connection.commit();
+        res.send({ code: "0", msg: "已加入黑名单" });
+    } catch (error) {
+        await connection.rollback().catch(() => {});
+        handleServerError(res, error, "001038", "加入黑名单失败");
+    } finally {
+        connection.release();
+    }
+});
+
+router.delete("/blocks/:id", async (req, res) => {
+    try {
+        await ensureSocialTables();
+        await dbUtils.query({ sql: "DELETE FROM user_block WHERE blocker_id = ? AND blocked_id = ?", values: [getCurrentUserId(req), toNumber(req.params.id, 0)] });
+        res.send({ code: "0", msg: "已移出黑名单" });
+    } catch (error) {
+        handleServerError(res, error, "001039", "移出黑名单失败");
+    }
+});
+
 router.get("/dm/unread/summary", async (req, res) => {
     try {
         const currentUserId = getCurrentUserId(req);
@@ -638,6 +870,10 @@ router.get("/dm/:targetUserId", async (req, res) => {
 
     try {
         await ensureSocialTables();
+        if (await isBlocked(currentUserId, targetUserId)) {
+            sendError(res, "001024", "无法查看与该用户的私聊");
+            return;
+        }
         const targetUser = await buildPublicUserProfile(targetUserId, currentUserId);
         if (!targetUser) {
             sendError(res, "001011", "用户不存在");
@@ -697,18 +933,18 @@ router.get("/dm/:targetUserId", async (req, res) => {
     }
 });
 
-router.post("/dm/:targetUserId", async (req, res) => {
+router.post("/dm/:targetUserId", messageLimiter, async (req, res) => {
     const targetUserId = toNumber(req.params.targetUserId, 0);
     const currentUserId = getCurrentUserId(req);
-    const content = normalizeString(req.body?.content);
+    const moderation = moderateContent(req.body?.content, { maxLength: 2000 });
 
     if (!targetUserId || targetUserId === currentUserId) {
         sendError(res, "001014", "私聊对象无效");
         return;
     }
 
-    if (!content) {
-        sendError(res, "001015", "消息内容不能为空");
+    if (!moderation.allowed) {
+        sendError(res, "001015", moderation.reason);
         return;
     }
 
@@ -718,10 +954,16 @@ router.post("/dm/:targetUserId", async (req, res) => {
             return;
         }
 
+        const permission = await canDirectMessage(currentUserId, targetUserId);
+        if (!permission.allowed) {
+            sendError(res, "001040", permission.reason);
+            return;
+        }
+
         await ensureSocialTables();
         const { results } = await dbUtils.query({
             sql: "INSERT INTO user_direct_message (sender_id, receiver_id, content, create_time) VALUES (?, ?, ?, ?)",
-            values: [currentUserId, targetUserId, content.slice(0, 2000), new Date()],
+            values: [currentUserId, targetUserId, moderation.content, new Date()],
         });
 
         const { results: messageRows } = await dbUtils.query({

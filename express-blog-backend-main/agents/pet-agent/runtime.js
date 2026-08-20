@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const os = require("os");
 
 const store = require("./task-store");
-const PetAgentModelClient = require("./model-client");
+const AgentExecutionKernel = require("../core/execution-kernel");
 const { TOOL_DEFINITIONS, executeTool, performApprovedAction } = require("./tools");
 
 const MAX_ITERATIONS = Math.min(Math.max(Number(process.env.PET_AGENT_MAX_STEPS) || 24, 8), 60);
@@ -66,7 +66,7 @@ function fallbackDecision(task) {
 }
 
 async function decideNext(task) {
-    const model = new PetAgentModelClient();
+    const model = new AgentExecutionKernel();
     if (!model.isConfigured) return fallbackDecision(task);
 
     const draft = task.context?.artifacts?.draft;

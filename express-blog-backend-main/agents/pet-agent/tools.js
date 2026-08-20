@@ -1,7 +1,7 @@
 const config = require("../../config");
 const dbUtils = require("../../utils/db");
 const { getFetch } = require("../../utils/fetch");
-const PetAgentModelClient = require("./model-client");
+const AgentExecutionKernel = require("../core/execution-kernel");
 const { generateImage } = require("./image-service");
 
 const TOOL_DEFINITIONS = [
@@ -260,7 +260,7 @@ function unwrapDraftResponse(value) {
 
 async function analyzeImage(args) {
     if (!isPublicImageUrl(args.imageUrl)) throw new Error("请提供有效的 HTTP(S) 图片地址或图片 data URL");
-    const model = new PetAgentModelClient();
+    const model = new AgentExecutionKernel();
     if (!model.hasVisionProvider) throw new Error("没有可用的多模态视觉模型");
     const question = compactText(args.question || "描述图片内容，并指出可用于博客写作的关键信息。", 600);
     const analysis = await model.complete([
@@ -287,7 +287,7 @@ function offlineDraft(topic, context) {
 
 async function draftBlog(args, actor) {
     const topic = compactText(args.topic || actor.task.goal, 160);
-    const model = new PetAgentModelClient();
+    const model = new AgentExecutionKernel();
     const availableImages = contextImages(actor.task.context);
     let draft;
     let responseShape = [];

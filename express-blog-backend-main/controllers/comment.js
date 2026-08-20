@@ -1,5 +1,4 @@
 const express = require("express");
-const jwt = require("jsonwebtoken");
 const xss = require("xss");
 
 const router = express.Router();
@@ -33,30 +32,8 @@ const sendServerError = (res, error, code, msg) => {
     });
 };
 
-const getTokenFromRequest = (req) => {
-    const authorization = req.headers.authorization;
-    if (authorization?.startsWith("Bearer ")) {
-        return authorization.replace("Bearer ", "");
-    }
-
-    return "";
-};
-
 const getCurrentUserFromRequest = (req) => {
-    if (req.currentUser) {
-        return req.currentUser;
-    }
-
-    const token = getTokenFromRequest(req);
-    if (!token) {
-        return null;
-    }
-
-    try {
-        return jwt.verify(token, config.jwt.secret);
-    } catch (_error) {
-        return null;
-    }
+    return req.currentUser || req.session?.user || null;
 };
 
 const attachReplies = async (connection, comments) => {

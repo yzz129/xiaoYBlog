@@ -90,11 +90,16 @@ export interface UserDTO extends RecordDTO {
     last_login_time?: string;
     create_time?: string;
     article_count?: number;
-    follower_count?: number;
-    following_count?: number;
+    follower_count?: number | null;
+    following_count?: number | null;
+    follower_count_private?: boolean;
+    following_count_private?: boolean;
     is_following?: boolean;
     categories?: UserCategoryDTO[];
-    token?: string;
+    csrfToken?: string;
+    friendship_status?: "none" | "incoming" | "outgoing" | "friends";
+    friend_request_id?: number | null;
+    is_blocked?: boolean;
 }
 
 export interface DirectMessageDTO extends RecordDTO {

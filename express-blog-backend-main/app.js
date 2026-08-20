@@ -10,14 +10,24 @@ const { startWs } = require('./utils/ws');
 const config = require("./config");
 const { createSessionStore } = require("./utils/session-store");
 const { globalLimiter } = require("./utils/rate-limit");
+const { csrfProtection } = require("./utils/auth");
 
 const app = express();
 
 const server = http.createServer(app);
 const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32)) {
+  throw new Error('Production requires SESSION_SECRET with at least 32 characters');
+}
+if (isProduction && String(config.session.store).toLowerCase() !== 'redis') {
+  throw new Error('Production requires SESSION_STORE=redis');
+}
 const sessionSameSite = ['lax', 'strict', 'none'].includes(String(config.session.sameSite).toLowerCase())
   ? String(config.session.sameSite).toLowerCase()
   : 'lax';
+if (isProduction && sessionSameSite === 'none' && !config.session.secure) {
+  throw new Error('SESSION_COOKIE_SAMESITE=None requires SESSION_COOKIE_SECURE=true');
+}
 
 if (isProduction) {
   app.set('trust proxy', 1);
@@ -43,6 +53,7 @@ const sessionMiddleware = session({
   rolling: true,
   store: createSessionStore(),
 });
+app.set('sessionMiddleware', sessionMiddleware);
 
 // 完善http头部，提高安全性
 app.use(helmet());
@@ -56,6 +67,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 // 解析得到 req.cookies
 app.use(cookieParser());
+app.use(csrfProtection);
 app.use(express.static(path.join(__dirname, 'public')));
 
 function normalizeAllowedOrigins() {
@@ -111,7 +123,7 @@ server.listen(app.get('port'), function() {
 });
 
 // socket io
-startWs(server)
+startWs(server, sessionMiddleware)
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

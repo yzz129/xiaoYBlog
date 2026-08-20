@@ -157,7 +157,7 @@ router.beforeEach(async (to, _from, next) => {
     }
 
     const store = useStore();
-    if (!store.token) {
+    if (!store.isAuthed) {
         store.clearUserSession();
         next("/login");
         return;
@@ -166,7 +166,7 @@ router.beforeEach(async (to, _from, next) => {
     try {
         await store.fetchCurrent(true);
     } catch (_error) {
-        // A stale or invalid token is cleared by the response interceptor.
+        // A stale or invalid server session is cleared by the response interceptor.
     }
 
     if (store.isAuthed && store.userInfo) {

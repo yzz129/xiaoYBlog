@@ -280,6 +280,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { message } from "ant-design-vue";
 import { useRouter } from "vue-router";
+import { io, type Socket } from "socket.io-client";
 
 import mascot from "@/assets/illustrations/empty-mascot.webp";
 import { PetTask, PetTaskStatus, petAgentService } from "@/services/pet-agent";
@@ -308,7 +309,8 @@ const petHidden = ref(false);
 const isDragging = ref(false);
 type PetMotion = "idle" | "hop" | "peek" | "wiggle" | "float" | "wave";
 const petMotion = ref<PetMotion>("idle");
-let pollTimer: number | null = null;
+let realtimeSocket: Socket | null = null;
+let realtimeRefreshTimer: number | null = null;
 let motionTimer: number | null = null;
 let motionResetTimer: number | null = null;
 let bubbleTimer: number | null = null;
@@ -321,6 +323,30 @@ const BUBBLE_KEY = "xiaoy-agent-bubble-visible-v1";
 const HIDDEN_KEY = "xiaoy-agent-hidden-v1";
 const LAUNCHER_SIZE = 86;
 const VIEWPORT_PADDING = 12;
+
+function resolveSocketEndpoint() {
+    if (import.meta.env.VITE_SOCKET_SERVER) return import.meta.env.VITE_SOCKET_SERVER;
+    return import.meta.env.DEV ? "http://127.0.0.1:8002" : window.location.origin;
+}
+
+function connectTaskUpdates() {
+    if (!props.authenticated || props.preview) return;
+    realtimeSocket?.close();
+    realtimeSocket = io(`${resolveSocketEndpoint()}/notify`, {
+        path: "/socket.io",
+        transports: ["websocket", "polling"],
+        withCredentials: true,
+    });
+    realtimeSocket.on("agent:task", (payload: { taskId?: string }) => {
+        if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+        realtimeRefreshTimer = window.setTimeout(async () => {
+            await loadTasks().catch(() => undefined);
+            if (activeTask.value?.id && (!payload?.taskId || payload.taskId === activeTask.value.id)) {
+                await loadActiveTask().catch(() => undefined);
+            }
+        }, 120);
+    });
+}
 
 const terminalStatuses: PetTaskStatus[] = ["completed", "failed", "cancelled"];
 const terminalStatus = computed(() => Boolean(activeTask.value && terminalStatuses.includes(activeTask.value.status)));
@@ -718,14 +744,12 @@ onMounted(() => {
     scheduleBubbleAutoHide();
     if (props.authenticated && !props.preview) {
         loadTasks().catch(() => undefined);
-        pollTimer = window.setInterval(() => {
-            if (isOpen.value && activeTask.value) loadActiveTask().catch(() => undefined);
-            else loadTasks().catch(() => undefined);
-        }, 3000);
+        connectTaskUpdates();
     }
 });
 onBeforeUnmount(() => {
-    if (pollTimer) window.clearInterval(pollTimer);
+    realtimeSocket?.close();
+    if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
     clearMotionTimers();
     clearBubbleTimer();
     window.removeEventListener("resize", handleViewportResize);

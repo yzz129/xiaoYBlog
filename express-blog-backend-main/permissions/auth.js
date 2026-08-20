@@ -1,6 +1,7 @@
 const authMap = new Map();
 
 authMap.set("/user/current", { role: "user" });
+authMap.set("/user/logout", { role: "user" });
 authMap.set("/user/forgetpwd", { role: "user" });
 authMap.set("/user/profile", { role: "user" });
 authMap.set("/user/password", { role: "user" });
@@ -8,6 +9,15 @@ authMap.set("/user/follow/status/:id", { role: "user" });
 authMap.set("/user/follow/:id", { role: "user" });
 authMap.set("/user/followers", { role: "user" });
 authMap.set("/user/following", { role: "user" });
+authMap.set("/user/friends", { role: "user" });
+authMap.set("/user/friends/:id", { role: "user" });
+authMap.set("/user/friends/requests", { role: "user" });
+authMap.set("/user/friends/requests/:id", { role: "user" });
+authMap.set("/user/friends/requests/:id/accept", { role: "user" });
+authMap.set("/user/friends/requests/:id/reject", { role: "user" });
+authMap.set("/user/privacy", { role: "user" });
+authMap.set("/user/blocks", { role: "user" });
+authMap.set("/user/blocks/:id", { role: "user" });
 authMap.set("/user/dm/unread/summary", { role: "user" });
 authMap.set("/user/dm/:targetUserId", { role: "user" });
 authMap.set("/upload/image", { role: "user" });

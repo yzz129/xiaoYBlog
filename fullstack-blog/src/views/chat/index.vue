@@ -285,9 +285,7 @@ const connectSocket = () => {
     socket.value = io(`${endpoint}/chatroom`, {
         path: "/socket.io",
         transports: ["websocket", "polling"],
-        auth: {
-            token: store.token,
-        },
+        withCredentials: true,
     });
 
     socket.value.on("connect", () => {

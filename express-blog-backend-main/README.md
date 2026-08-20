@@ -9,7 +9,7 @@
 - Redis
 - Socket.IO
 - MinIO
-- JWT
+- Redis Session + CSRF
 - LangChain / DeepSeek / Tavily
 
 ## 启动
@@ -17,7 +17,7 @@
 先准备环境变量：
 
 - 复制 `.env.example` 为 `.env`
-- 按本地环境填写 MySQL、Redis、MinIO、JWT、AI 配置
+- 按本地环境填写 MySQL、Redis、MinIO、Session、AI 配置
 
 然后启动：
 
@@ -77,8 +77,22 @@ npm run test:pet-agent
 
 - 前端仍以 SHA-256 摘要作为登录凭证，后端不会直接保存该摘要，而是再使用随机盐 `scrypt` 派生后入库。
 - 历史账号无需重置密码；第一次成功登录会在同一个数据库连接中自动升级存储格式。
+- HTTP 与 Socket.IO 统一使用 Redis Session，不再签发或兼容 JWT；退出登录会立即销毁服务端 Session，浏览器中的旧 Cookie 随即失效。
+- 所有已登录写请求都校验 `X-CSRF-Token`，登录时会重新生成 Session ID，降低固定会话和跨站请求风险。
 - Session 密钥、Cookie 名称、`SameSite`、`Secure` 和有效期均从环境变量读取。生产环境必须设置独立的 `SESSION_SECRET`，HTTPS 部署时设置 `SESSION_COOKIE_SECURE=true`。
 - Session Cookie 使用 `HttpOnly`，并关闭 `resave` 与匿名空 Session 保存。
+
+升级后旧 JWT 登录态不会继续生效，已有用户需要重新登录一次。
+
+## 生产级状态与并发
+
+- 关注仍表示单向订阅；好友使用独立的申请、接受、拒绝、删除关系，并支持拉黑以及好友申请、私信、关注列表可见性设置。
+- 公共聊天室最近消息、在线心跳和 Socket 频率桶均保存到 Redis；Socket.IO Redis Adapter 负责多进程、多实例广播。
+- 公共聊天与私信复用统一内容清洗和敏感词审核，Socket 消息另有独立的 Redis 限流，不与普通 HTTP 接口共享计数器。
+- 阅读量按“文章 + 登录用户/匿名会话 + 时间窗口”建立数据库唯一键，通过事务与 `INSERT IGNORE` 防止刷新和并发重复计数。
+- 博客写作 Agent 与宠物 Agent 共用 `agents/core` 模型传输和执行内核，供应商故障转移与阶段执行逻辑只维护一份。
+- 宠物任务状态通过 `/notify` Socket.IO 命名空间实时推送；前端只在初次打开或实时连接恢复时补拉状态，不再每 3 秒轮询。
+- Redis 是生产必需依赖：Session、实时聊天、在线状态、限流和多实例事件广播都依赖它。部署时应配置持久化、密码、内网访问与监控。
 
 ## 可演示验收流程
 

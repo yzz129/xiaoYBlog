@@ -89,9 +89,9 @@ export class AgentClient {
             headers["Content-Type"] = "application/json";
         }
         if (typeof document !== "undefined") {
-            const token = localStorage.getItem("token");
+            const token = localStorage.getItem("csrfToken");
             if (token) {
-                headers["Authorization"] = `Bearer ${token}`;
+                headers["X-CSRF-Token"] = token;
             }
         }
 
@@ -113,6 +113,7 @@ export class AgentClient {
     ): Promise<{ success: boolean; state?: AgentState; error?: string }> {
         try {
             const response = await fetch(`${this.baseUrl}/stream-start`, {
+                credentials: "include",
                 method: "POST",
                 headers: this.buildHeaders(true),
                 body: JSON.stringify({
@@ -137,6 +138,7 @@ export class AgentClient {
     async getState(): Promise<{ success: boolean; state?: AgentState; error?: string }> {
         try {
             const response = await fetch(`${this.baseUrl}/state/${this.sessionId}`, {
+                credentials: "include",
                 headers: this.buildHeaders(false),
             });
             const data = await response.json();
@@ -174,6 +176,7 @@ export class AgentClient {
     async complete(): Promise<{ success: boolean; result?: CompleteResult; error?: string }> {
         try {
             const response = await fetch(`${this.baseUrl}/complete`, {
+                credentials: "include",
                 method: "POST",
                 headers: this.buildHeaders(true),
                 body: JSON.stringify({
@@ -198,6 +201,7 @@ export class AgentClient {
     ): Promise<{ success: boolean; result?: CompleteResult; state?: AgentState; error?: string }> {
         try {
             const response = await fetch(`${this.baseUrl}/stream-complete`, {
+                credentials: "include",
                 method: "POST",
                 headers: this.buildHeaders(true),
                 body: JSON.stringify({
@@ -221,6 +225,7 @@ export class AgentClient {
     async reset(): Promise<{ success: boolean; error?: string }> {
         try {
             const response = await fetch(`${this.baseUrl}/reset`, {
+                credentials: "include",
                 method: "POST",
                 headers: this.buildHeaders(true),
                 body: JSON.stringify({
@@ -243,6 +248,7 @@ export class AgentClient {
     async streamSection(sectionIndex: number, onChunk: (chunk: string) => void): Promise<{ success: boolean; error?: string }> {
         try {
             const response = await fetch(`${this.baseUrl}/stream-section/${this.sessionId}/${sectionIndex}`, {
+                credentials: "include",
                 headers: this.buildHeaders(false),
             });
             if (!response.ok) {
@@ -295,6 +301,7 @@ export class AgentClient {
     private async postJson(path: string, payload: Record<string, unknown>): Promise<{ success: boolean; state?: AgentState; error?: string }> {
         try {
             const response = await fetch(`${this.baseUrl}${path}`, {
+                credentials: "include",
                 method: "POST",
                 headers: this.buildHeaders(true),
                 body: JSON.stringify(payload),

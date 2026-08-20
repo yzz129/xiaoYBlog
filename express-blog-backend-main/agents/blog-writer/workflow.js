@@ -1,6 +1,6 @@
 const { getAiWriterConfig } = require("./config");
 const sessionStore = require("./session-store");
-const DeepSeekChatClient = require("./llm-client");
+const AgentExecutionKernel = require("../core/execution-kernel");
 const ResearchService = require("./research-service");
 const Planner = require("./planner");
 const Writer = require("./writer");
@@ -28,7 +28,7 @@ class BlogWritingWorkflow {
         }
 
         this.options = options;
-        this.llm = new DeepSeekChatClient(options);
+        this.llm = new AgentExecutionKernel(options);
         this.researchService = new ResearchService(options);
         this.planner = new Planner({
             llm: this.llm,

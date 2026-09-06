@@ -7,9 +7,7 @@ const openai = new OpenAI({
   apiKey: config.chatgpt.key,
 });
 
-// DeepSeek API 配置
-const deepSeekApiKey = config.aiWriter.deepseekApiKey;
-const deepSeekApiUrl = config.aiWriter.deepseekBaseUrl + '/chat/completions';
+const AgentExecutionKernel = require('../agents/core/execution-kernel');
 
 /**
  * @param {Number} wd 聊天上下文
@@ -242,7 +240,7 @@ router.post('/changeTopic', function(req, res, next) {
  * AI 创作
  * @param {String} prompt 创作提示词
  * @param {String} fileContent 文件内容（可选）
- * @description 使用 DeepSeek API 生成文章内容
+ * @description 使用共享 Agent 模型提供方生成文章内容
  */
 router.post('/generate-content', async function(req, res, next) {
     const { prompt, fileContent } = req.body;
@@ -256,7 +254,6 @@ router.post('/generate-content', async function(req, res, next) {
     try {
         // 构建请求体
         const requestBody = {
-            model: 'deepseek-chat',
             messages: [
                 {
                     role: 'system',
@@ -268,43 +265,33 @@ router.post('/generate-content', async function(req, res, next) {
                 }
             ],
             temperature: 0.7,
-            max_tokens: 2048,
-            stream: true
+            maxTokens: 2048
         };
 
-        // 调用 DeepSeek API
-        const response = await fetch(deepSeekApiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${deepSeekApiKey}`
+        const llm = new AgentExecutionKernel();
+        if (!llm.isConfigured) {
+            return res.status(503).json({ message: "未配置可用的 Agent 模型提供方" });
+        }
+
+        await llm.streamChat({
+            ...requestBody,
+            onToken(token) {
+                if (!res.headersSent) {
+                    res.setHeader('Content-Type', 'text/event-stream');
+                    res.setHeader('Cache-Control', 'no-cache');
+                    res.setHeader('Connection', 'keep-alive');
+                }
+                res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: token } }] })}\n\n`);
             },
-            body: JSON.stringify(requestBody)
         });
-
-        if (!response.ok) {
-            throw new Error('DeepSeek API 调用失败');
-        }
-
-        // 流式返回响应
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            res.write(chunk);
-        }
-
+        res.write('data: [DONE]\n\n');
         res.end();
     } catch (error) {
         console.error('生成内容失败:', error);
+        if (res.headersSent) {
+            res.write(`data: ${JSON.stringify({ error: "AI 创作失败，请重试" })}\n\n`);
+            return res.end();
+        }
         res.status(500).json({
             message: "AI 创作失败，请重试"
         });

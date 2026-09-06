@@ -20,15 +20,15 @@ class BlogWritingWorkflow {
     constructor(snapshot = null) {
         const options = getAiWriterConfig();
 
-        if (!options.deepseekApiKey) {
-            throw new Error("Missing DeepSeek API key configuration");
-        }
         if (!options.tavilyApiKey) {
             throw new Error("Missing Tavily API key configuration");
         }
 
         this.options = options;
         this.llm = new AgentExecutionKernel(options);
+        if (!this.llm.isConfigured) {
+            throw new Error("Missing Agent model provider configuration");
+        }
         this.researchService = new ResearchService(options);
         this.planner = new Planner({
             llm: this.llm,

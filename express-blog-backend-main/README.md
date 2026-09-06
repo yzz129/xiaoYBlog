@@ -10,7 +10,7 @@
 - Socket.IO
 - MinIO
 - Redis Session + CSRF
-- LangChain / DeepSeek / Tavily
+- Agnes / OpenRouter / OpenAI / Tavily
 
 ## 启动
 
@@ -144,14 +144,13 @@ Agent 不是固定工作流。运行时会反复读取任务目标和真实工�
 在后端环境文件中至少配置一个模型提供方：
 
 ```env
-# 推荐：OpenAI Responses API
+# 可选：OpenAI
 OPENAI_API_KEY=
 OPENAI_AGENT_MODEL=gpt-5-mini
 
-# 或使用现有的 DeepSeek OpenAI-compatible 接口
-DEEPSEEK_API_KEY=
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-DEEPSEEK_MODEL=deepseek-chat
+# 首选：Agnes
+AGNES_API_KEY=
+AGNES_AGENT_MODEL=agnes-2.5-flash
 
 # 只有公开网页搜索需要
 TAVILY_API_KEY=
@@ -189,7 +188,7 @@ MySQL 启动后，服务会自动创建 `agent_task` 与 `agent_task_event` 两�
 宠物 Agent 支持按顺序自动故障转移。推荐把密钥写在不会提交的 `.env.local`，不要写进前端变量或源码：
 
 ```env
-PET_AGENT_PROVIDER_ORDER=agnes,openrouter,openai,deepseek
+PET_AGENT_PROVIDER_ORDER=agnes,openrouter,openai
 
 # OpenRouter 只允许 openrouter/free 或以 :free 结尾的模型；其他模型会在本地被过滤。
 OPENROUTER_API_KEY=
@@ -200,9 +199,9 @@ AGNES_API_KEY=
 AGNES_AGENT_MODEL=agnes-2.5-flash
 AGNES_IMAGE_MODEL=agnes-image-2.1-flash
 
-# 百度 AI 搜索与 Tavily 会并行查询，一个失败时自动使用另一个。
+# 默认使用 Tavily；百度搜索需另行配置有效模型，模型留空时跳过。
 BAIDU_SEARCH_API_KEY=
-BAIDU_SEARCH_MODEL=deepseek-v4-flash
+BAIDU_SEARCH_MODEL=
 TAVILY_API_KEY=
 
 # Pollinations 仅允许官方实时模型目录中价格字段全部为 0 的图片模型。

@@ -38,9 +38,8 @@ class AgentModelClient {
             } : null,
             agnes: agent.agnesApiKey ? { name: "agnes", apiKey: agent.agnesApiKey, baseURL: agent.agnesBaseUrl, model: agent.agnesModel, vision: true } : null,
             openai: config.chatgpt?.key ? { name: "openai", apiKey: config.chatgpt.key, model: process.env.OPENAI_AGENT_MODEL || "gpt-5-mini", vision: true } : null,
-            deepseek: config.aiWriter?.deepseekApiKey ? { name: "deepseek", apiKey: config.aiWriter.deepseekApiKey, baseURL: config.aiWriter.deepseekBaseUrl, model: config.aiWriter.model, vision: false } : null,
         };
-        this.providers = (options.providerOrder || agent.providerOrder || ["openrouter", "agnes", "deepseek"])
+        this.providers = (options.providerOrder || agent.providerOrder || ["agnes", "openrouter", "openai"])
             .map((name) => providerMap[String(name).toLowerCase()]).filter(Boolean)
             .filter((provider) => provider.name !== "openrouter" || isFreeOpenRouterModel(provider.model));
         this.requestTimeoutMs = options.requestTimeoutMs || agent.requestTimeoutMs || 120000;

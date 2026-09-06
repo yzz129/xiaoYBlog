@@ -141,7 +141,7 @@ async function tavilySearch(query, includeImages) {
 
 async function baiduSearch(query, includeImages) {
     const apiKey = config.aiWriter?.baiduSearchApiKey;
-    if (!apiKey) return null;
+    if (!apiKey || !config.aiWriter?.baiduSearchModel) return null;
     const fetch = await getFetch();
     const response = await fetch(`${config.aiWriter.baiduSearchBaseUrl.replace(/\/$/, "")}/v2/ai_search/chat/completions`, {
         method: "POST",
@@ -205,7 +205,7 @@ async function webSearch(args) {
     const successful = settled.filter((result) => result.status === "fulfilled" && result.value).map((result) => result.value);
     const errors = settled.filter((result) => result.status === "rejected").map((result) => result.reason?.message || "搜索失败");
     if (!successful.length) {
-        if (!config.aiWriter?.baiduSearchApiKey && !config.aiWriter?.tavilyApiKey) throw new Error("未配置 BAIDU_SEARCH_API_KEY 或 TAVILY_API_KEY");
+        if (!(config.aiWriter?.baiduSearchApiKey && config.aiWriter?.baiduSearchModel) && !config.aiWriter?.tavilyApiKey) throw new Error("请配置 TAVILY_API_KEY，或同时配置 BAIDU_SEARCH_API_KEY 和 BAIDU_SEARCH_MODEL");
         throw new Error(errors.join("；") || "公开网页搜索没有返回结果");
     }
     const items = uniqueByUrl(successful.flatMap((result) => result.items || [])).slice(0, 10);

@@ -1,3 +1,6 @@
+const observability = require('./observability');
+observability.start();
+
 const http = require('http');
 const express = require('express');
 const path = require('path');
@@ -11,6 +14,8 @@ const config = require("./config");
 const { createSessionStore } = require("./utils/session-store");
 const { globalLimiter } = require("./utils/rate-limit");
 const { csrfProtection } = require("./utils/auth");
+const agentLoop = require("./agents/pet-agent/agent-loop");
+const petAgentRuntime = require("./agents/pet-agent/runtime");
 
 const app = express();
 
@@ -124,6 +129,7 @@ server.listen(app.get('port'), function() {
 
 // socket io
 startWs(server, sessionMiddleware)
+agentLoop.start()
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
@@ -142,5 +148,22 @@ app.use(function(err, req, res, next) {
   res.status(err.status || 500);
   res.render('error');
 });
+
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[Shutdown] ${signal}: draining Agent workers`);
+  agentLoop.stop();
+  await petAgentRuntime.stopScheduler().catch((error) => console.error('[Shutdown] Agent queue:', error.message));
+  server.close(async () => {
+    await observability.shutdown().catch((error) => console.error('[Shutdown] telemetry:', error.message));
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.once('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = app;

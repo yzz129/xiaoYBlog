@@ -6,9 +6,9 @@
             class="pet-launcher"
             :class="{
                 'pet-launcher--busy': hasRunningTask,
-                'pet-launcher--open': isOpen,
                 'pet-launcher--dragging': isDragging,
                 'pet-launcher--bubble-right': bubbleOpensRight,
+                [`pet-launcher--state-${petVisualState}`]: true,
                 [`pet-launcher--motion-${petMotion}`]: true,
             }"
             :style="launcherStyle"
@@ -20,8 +20,8 @@
                         <span>{{ launcherStatus }}</span>
                         <button type="button" aria-label="收起提示气泡" title="收起气泡" @click.stop="hideBubble">×</button>
                     </div>
-                    <strong>{{ launcherTitle }}</strong>
-                    <p>{{ launcherHint }}</p>
+                    <strong>{{ proactiveInteraction ? "小Y 来找你啦" : launcherTitle }}</strong>
+                    <p>{{ proactiveInteraction?.content || launcherHint }}</p>
                     <div v-if="launcherProgress.total" class="pet-bubble__progress">
                         <div><span>任务进度</span><b>{{ launcherProgress.completed }}/{{ launcherProgress.total }}</b></div>
                         <i><span :style="{ width: `${launcherProgress.percent}%` }"></span></i>
@@ -53,7 +53,7 @@
                 <span class="pet-launcher__spark pet-launcher__spark--two" aria-hidden="true"></span>
                 <span class="pet-launcher__spark pet-launcher__spark--three" aria-hidden="true"></span>
                 <span v-if="hasRunningTask" class="pet-launcher__status" aria-hidden="true"></span>
-                <img :src="mascot" alt="" draggable="false" />
+                <img :src="petImage" alt="" draggable="false" />
             </button>
             <button
                 v-if="!bubbleVisible && !isOpen"
@@ -69,34 +69,41 @@
 
         <transition name="pet-recall">
             <button v-if="visible && petHidden" class="pet-recall" type="button" aria-label="召回小Y Agent" @click="showPet">
-                <img :src="mascot" alt="" />
+                <img :src="mascotIdle" alt="" />
                 <span>召回小Y</span>
             </button>
         </transition>
 
-        <transition name="agent-fade">
-            <button v-if="isOpen" class="agent-backdrop" type="button" aria-label="关闭小Y Agent" @click="closeDrawer"></button>
-        </transition>
-
-        <transition name="agent-slide">
+        <transition name="agent-bubble">
             <aside
                 v-if="isOpen"
                 ref="drawerRef"
-                class="agent-drawer"
+                class="agent-bubble"
+                :class="{ 'agent-bubble--below': chatBubbleBelow, 'agent-bubble--ready': chatBubbleReady }"
+                :style="chatBubbleStyle"
                 role="dialog"
-                aria-modal="true"
                 aria-label="小Y Agent 任务助手"
                 tabindex="-1"
             >
                 <header class="agent-header">
                     <div class="agent-header__identity">
-                        <div class="agent-header__avatar"><img :src="mascot" alt="小Y" /></div>
+                        <div class="agent-header__avatar"><img :src="petImage" alt="小Y" /></div>
                         <div>
                             <h2>小Y Agent</h2>
                             <p><span :class="['status-dot', `status-dot--${currentTone}`]"></span>{{ currentStatusText }}</p>
                         </div>
                     </div>
                     <div class="agent-header__actions">
+                        <button
+                            v-if="authenticated || preview"
+                            type="button"
+                            title="主动陪伴设置"
+                            aria-label="主动陪伴设置"
+                            :class="{ active: settingsOpen }"
+                            @click="settingsOpen = !settingsOpen"
+                        >
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
+                        </button>
                         <button v-if="authenticated || preview" type="button" title="新任务" aria-label="新任务" @click="startNewTask">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                         </button>
@@ -105,6 +112,49 @@
                         </button>
                     </div>
                 </header>
+
+                <section v-if="settingsOpen && (authenticated || preview)" class="agent-settings" aria-label="主动陪伴设置">
+                    <div class="agent-settings__head">
+                        <div><strong>Agent Loop</strong><span>只在你在线且活跃时陪伴</span></div>
+                        <label class="agent-switch">
+                            <input v-model="agentSettings.proactiveEnabled" type="checkbox" />
+                            <span></span>
+                        </label>
+                    </div>
+                    <div class="agent-settings__grid">
+                        <label>互动风格
+                            <select v-model.number="agentSettings.humorLevel">
+                                <option :value="0">安静务实</option>
+                                <option :value="1">温和陪伴</option>
+                                <option :value="2">偶尔玩梗</option>
+                                <option :value="3">活泼有梗</option>
+                            </select>
+                        </label>
+                        <label>最短间隔
+                            <select v-model.number="agentSettings.intervalMinutes">
+                                <option :value="30">30 分钟</option>
+                                <option :value="60">1 小时</option>
+                                <option :value="120">2 小时</option>
+                                <option :value="240">4 小时</option>
+                            </select>
+                        </label>
+                        <label>每天最多
+                            <select v-model.number="agentSettings.dailyLimit">
+                                <option :value="1">1 次</option>
+                                <option :value="2">2 次</option>
+                                <option :value="4">4 次</option>
+                                <option :value="6">6 次</option>
+                                <option :value="8">8 次</option>
+                            </select>
+                        </label>
+                        <label>安静开始<input v-model="agentSettings.quietStart" type="time" /></label>
+                        <label>安静结束<input v-model="agentSettings.quietEnd" type="time" /></label>
+                    </div>
+                    <div class="agent-settings__foot">
+                        <span>每天最多 {{ agentSettings.dailyLimit }} 次；不会记忆密码、密钥和联系方式。</span>
+                        <button type="button" :disabled="settingsSaving" @click="saveAgentSettings">{{ settingsSaving ? "保存中…" : "保存" }}</button>
+                    </div>
+                </section>
 
                 <template v-if="authenticated || preview">
                 <div v-if="tasks.length" class="task-rail" aria-label="最近任务">
@@ -121,11 +171,32 @@
                 </div>
 
                 <main ref="scrollArea" class="agent-content">
+                    <section v-if="proactiveInteraction" class="proactive-card">
+                        <div class="proactive-card__mascot"><img :src="petThinking" alt="" /></div>
+                        <div class="proactive-card__body">
+                            <div><strong>小Y 主动来找你</strong><small>已结合你的任务与偏好</small></div>
+                            <p>{{ proactiveInteraction.content }}</p>
+                            <button v-if="proactiveInteraction.suggestion" type="button" @click="useProactiveSuggestion">
+                                {{ proactiveInteraction.suggestion }}
+                            </button>
+                        </div>
+                        <div class="proactive-card__feedback" aria-label="评价这次互动">
+                            <button type="button" title="喜欢，今后多来一点" :class="{ active: proactiveInteraction.feedback === 'liked' }" @click="feedbackProactive('liked')">👍</button>
+                            <button type="button" title="不喜欢，减少类似内容" :class="{ active: proactiveInteraction.feedback === 'disliked' }" @click="feedbackProactive('disliked')">👎</button>
+                            <button type="button" title="收起" @click="dismissProactive">×</button>
+                        </div>
+                    </section>
                     <div v-if="!activeTask" class="agent-welcome">
-                        <div class="agent-welcome__art"><img :src="mascot" alt="" /></div>
+                        <div class="agent-welcome__art"><img :src="petWork" alt="" /></div>
                         <h3>把事情交给我吧</h3>
-                        <p>我可以搜索站内博客、找到作者、关注用户、整理资料、撰写或编辑文章，也能按你指定的时间开始。</p>
+                        <p>我可以搜索站内博客、找到作者、关注或添加好友、发送私信、整理资料、撰写或编辑文章，也能按你指定的时间开始。</p>
                         <button type="button" @click="useExample">试试：查资料并写一篇博客</button>
+                        <div v-if="agentMetrics" class="agent-health" aria-label="Agent 运行概况">
+                            <span><b>{{ metricsSuccessRate }}</b><small>完成成功率</small></span>
+                            <span><b>{{ agentMetrics.tasks.total }}</b><small>累计任务</small></span>
+                            <span><b>{{ agentMetrics.alerts.length }}</b><small>待关注</small></span>
+                        </div>
+                        <small v-if="agentMetrics?.orchestration" class="agent-health__mode">执行引擎：{{ agentMetrics.orchestration.driver === 'redis' ? 'Redis 持久队列' : '数据库安全轮询' }} · {{ agentMetrics.orchestration.state }}</small>
                     </div>
 
                     <template v-else>
@@ -198,6 +269,8 @@
                             <div>
                                 <h3>这一步需要你的确认</h3>
                                 <p>{{ activeTask.pendingAction.label }}</p>
+                                <blockquote v-if="approvalPayloadPreview">{{ approvalPayloadPreview }}</blockquote>
+                                <small>{{ approvalHint }}</small>
                             </div>
                             <div class="approval-card__actions">
                                 <button class="secondary" type="button" @click="handleApproval(false)">先不执行</button>
@@ -213,6 +286,34 @@
                         <section v-if="activeTask.lastError" class="error-card">
                             <strong>任务遇到问题</strong><p>{{ activeTask.lastError }}</p>
                         </section>
+
+                        <section class="diagnostic-card">
+                            <button class="diagnostic-card__toggle" type="button" :aria-expanded="diagnosticsOpen" @click="toggleDiagnostics">
+                                <span><strong>运行报告</strong><small>{{ diagnosticStatusLabel }}</small></span>
+                                <span aria-hidden="true">{{ diagnosticsOpen ? '收起' : '查看' }}</span>
+                            </button>
+                            <div v-if="diagnosticsOpen" class="diagnostic-card__body">
+                                <p v-if="diagnosticsLoading" class="diagnostic-card__loading">正在汇总模型、工具与预算数据…</p>
+                                <template v-else-if="taskDiagnostics">
+                                    <div class="diagnostic-grid">
+                                        <span><small>决策</small><b>{{ taskDiagnostics.decisions.total }}</b></span>
+                                        <span><small>模型调用</small><b>{{ taskDiagnostics.models.calls }}</b></span>
+                                        <span><small>工具成功</small><b>{{ taskDiagnostics.tools.completed }}</b></span>
+                                        <span><small>Token</small><b>{{ formatCompactNumber(taskDiagnostics.models.totalTokens) }}</b></span>
+                                    </div>
+                                    <p v-if="taskDiagnostics.observability.traceIds.length" class="diagnostic-trace">Trace {{ taskDiagnostics.observability.traceIds[taskDiagnostics.observability.traceIds.length - 1].slice(0, 12) }}…</p>
+                                    <div class="budget-row"><span>步骤</span><b>{{ taskDiagnostics.budget.usedSteps }} / {{ taskDiagnostics.budget.maxSteps }}</b></div>
+                                    <div class="budget-track"><i :style="{ width: budgetPercent(taskDiagnostics.budget.usedSteps, taskDiagnostics.budget.maxSteps) }"></i></div>
+                                    <div class="budget-row"><span>工具调用</span><b>{{ taskDiagnostics.budget.usedToolCalls }} / {{ taskDiagnostics.budget.maxToolCalls }}</b></div>
+                                    <div class="budget-track"><i :style="{ width: budgetPercent(taskDiagnostics.budget.usedToolCalls, taskDiagnostics.budget.maxToolCalls) }"></i></div>
+                                    <div v-if="taskDiagnostics.warnings.length" class="diagnostic-warnings">
+                                        <p v-for="warning in taskDiagnostics.warnings" :key="warning">{{ warning }}</p>
+                                    </div>
+                                    <p v-else class="diagnostic-ok">运行健康，未发现异常。</p>
+                                </template>
+                                <p v-else class="diagnostic-card__loading">暂时没有可用的运行数据。</p>
+                            </div>
+                        </section>
                     </template>
                 </main>
 
@@ -225,20 +326,36 @@
                         <input v-if="scheduleEnabled" v-model="scheduledAt" type="datetime-local" aria-label="任务执行时间" :min="minimumSchedule" />
                     </div>
                     <div class="attachment-control">
-                        <button type="button" :class="{ active: attachmentEnabled }" @click="attachmentEnabled = !attachmentEnabled">
+                        <input
+                            ref="attachmentInput"
+                            class="attachment-input"
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif"
+                            multiple
+                            aria-label="选择任务图片"
+                            @change="handleAttachmentSelection"
+                        />
+                        <button type="button" :class="{ active: pendingAttachments.length }" :disabled="attachmentUploading || pendingAttachments.length >= 6" @click="openAttachmentPicker">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12.5 14.2 6.3a3 3 0 1 1 4.2 4.2l-8.5 8.5a5 5 0 0 1-7.1-7.1l8-8" /></svg>
-                            {{ attachmentEnabled ? "图片附件" : "添加图片" }}
+                            {{ attachmentUploading ? "正在上传…" : pendingAttachments.length ? `图片 ${pendingAttachments.length}/6` : "添加图片" }}
                         </button>
-                        <input v-if="attachmentEnabled" v-model="attachmentUrl" type="url" placeholder="粘贴公开图片 URL（https://…）" aria-label="图片 URL" />
+                        <span>支持 JPG、PNG、WEBP、GIF，单张不超过 5MB</span>
+                    </div>
+                    <div v-if="pendingAttachments.length" class="attachment-previews" aria-label="待发送图片">
+                        <figure v-for="image in pendingAttachments" :key="image.id">
+                            <img :src="image.previewUrl" :alt="image.name" />
+                            <button type="button" :aria-label="`移除 ${image.name}`" @click="removeAttachment(image.id)">×</button>
+                        </figure>
                     </div>
                     <div class="composer-box">
                         <textarea
                             v-model="messageText"
-                            :placeholder="activeTask ? '继续补充要求…' : '告诉小Y要完成什么任务…'"
+                            :placeholder="graphMessageBlocked ? graphMessageHint : activeTask ? '继续补充要求…' : '告诉小Y要完成什么任务…'"
+                            :disabled="graphMessageBlocked"
                             rows="2"
                             @keydown.enter.exact.prevent="submitMessage"
                         ></textarea>
-                        <button class="send-button" type="button" :disabled="!messageText.trim() || submitting" aria-label="发送任务" @click="submitMessage">
+                        <button class="send-button" type="button" :disabled="graphMessageBlocked || !messageText.trim() || submitting || attachmentUploading" aria-label="发送任务" @click="submitMessage">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 5 16 7-16 7 3-7-3-7Z" /><path d="M7 12h13" /></svg>
                         </button>
                     </div>
@@ -248,18 +365,18 @@
                         <span>执行记录会自动保存</span>
                         <button class="danger" type="button" @click="cancelTask">取消任务</button>
                     </div>
-                    <p v-else class="composer-hint">Enter 发送 · 发布与覆盖操作会先征求你的确认</p>
+                    <p v-else class="composer-hint">Enter 发送 · 发布、关注、好友与私信等对外操作会先征求你的确认</p>
                 </footer>
                 </template>
 
                 <main v-else class="agent-content agent-content--guest">
                     <div class="guest-gate">
-                        <div class="guest-gate__art"><img :src="mascot" alt="小Y" /></div>
+                        <div class="guest-gate__art"><img :src="petWork" alt="小Y" /></div>
                         <span>AI 任务助手</span>
                         <h3>登录后，把任务交给我</h3>
-                        <p>我可以搜索博客、查找作者、关注用户、整理资料、撰写和编辑文章，也可以按指定时间自动执行。</p>
+                        <p>我可以搜索博客、查找作者、关注或添加好友、发送私信、整理资料、撰写和编辑文章，也可以按指定时间自动执行。</p>
                         <button type="button" @click="goToLogin">登录并开始使用</button>
-                        <small>涉及发布、覆盖等操作时，我会先征求你的确认。</small>
+                        <small>涉及发布、关注、好友和私信等对外操作时，我会先征求你的确认。</small>
                     </div>
                 </main>
             </aside>
@@ -282,8 +399,22 @@ import { message } from "ant-design-vue";
 import { useRouter } from "vue-router";
 import { io, type Socket } from "socket.io-client";
 
-import mascot from "@/assets/illustrations/empty-mascot.webp";
-import { PetTask, PetTaskStatus, petAgentService } from "@/services/pet-agent";
+import mascotIdle from "@/assets/illustrations/empty-mascot.webp";
+import petCelebrate from "@/assets/illustrations/pet-celebrate.png";
+import petSleep from "@/assets/illustrations/pet-sleep.png";
+import petThinking from "@/assets/illustrations/pet-thinking.png";
+import petWork from "@/assets/illustrations/pet-work.png";
+import {
+    PetAgentInteraction,
+    PetAgentMetrics,
+    PetAgentProfile,
+    PetAgentSettings,
+    PetTask,
+    PetTaskDiagnostics,
+    PetTaskStatus,
+    petAgentService,
+} from "@/services/pet-agent";
+import { uploadService } from "@/services/upload";
 
 const props = withDefaults(defineProps<{ visible: boolean; preview?: boolean; authenticated?: boolean }>(), { preview: false, authenticated: true });
 const router = useRouter();
@@ -291,13 +422,37 @@ const router = useRouter();
 const isOpen = ref(false);
 const tasks = ref<PetTask[]>([]);
 const activeTask = ref<PetTask | null>(null);
+const taskDiagnostics = ref<PetTaskDiagnostics | null>(null);
+const agentMetrics = ref<PetAgentMetrics | null>(null);
+const diagnosticsOpen = ref(false);
+const diagnosticsLoading = ref(false);
 const messageText = ref("");
 const scheduleEnabled = ref(false);
 const scheduledAt = ref("");
 const submitting = ref(false);
 const draftVisible = ref(false);
-const attachmentEnabled = ref(false);
-const attachmentUrl = ref("");
+interface PendingAttachment {
+    id: string;
+    name: string;
+    url: string;
+    previewUrl: string;
+}
+const attachmentInput = ref<HTMLInputElement | null>(null);
+const pendingAttachments = ref<PendingAttachment[]>([]);
+const attachmentUploading = ref(false);
+const agentProfile = ref<PetAgentProfile | null>(null);
+const proactiveInteraction = ref<PetAgentInteraction | null>(null);
+const settingsOpen = ref(false);
+const settingsSaving = ref(false);
+const agentSettings = ref<PetAgentSettings>({
+    proactiveEnabled: true,
+    humorLevel: 2,
+    intervalMinutes: 60,
+    quietStart: "23:00",
+    quietEnd: "07:00",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai",
+    dailyLimit: 4,
+});
 const scrollArea = ref<HTMLElement | null>(null);
 const launcherRef = ref<HTMLElement | null>(null);
 const launcherButtonRef = ref<HTMLButtonElement | null>(null);
@@ -307,16 +462,24 @@ const viewportWidth = ref(0);
 const bubbleVisible = ref(true);
 const petHidden = ref(false);
 const isDragging = ref(false);
-type PetMotion = "idle" | "hop" | "peek" | "wiggle" | "float" | "wave";
+type PetMotion = "idle" | "focus" | "happy" | "celebrate" | "wave";
+type PetVisualState = "idle" | "thinking" | "work" | "celebrate" | "sleep";
 const petMotion = ref<PetMotion>("idle");
+const currentHour = ref(new Date().getHours());
+const chatBubblePosition = ref({ left: 12, top: 12, arrowX: 220, below: false });
+const chatBubbleReady = ref(false);
 let realtimeSocket: Socket | null = null;
 let realtimeRefreshTimer: number | null = null;
 let motionTimer: number | null = null;
 let motionResetTimer: number | null = null;
 let bubbleTimer: number | null = null;
+let clockTimer: number | null = null;
+let chatResizeObserver: ResizeObserver | null = null;
+let chatPositionFrame: number | null = null;
 let dragState: { pointerId: number; startX: number; startY: number; originX: number; originY: number } | null = null;
 let suppressLauncherClick = false;
 let isHoveringPet = false;
+let lastActivitySignalAt = 0;
 
 const POSITION_KEY = "xiaoy-agent-position-v1";
 const BUBBLE_KEY = "xiaoy-agent-bubble-visible-v1";
@@ -329,6 +492,14 @@ function resolveSocketEndpoint() {
     return import.meta.env.DEV ? "http://127.0.0.1:8002" : window.location.origin;
 }
 
+function signalAgentActivity() {
+    if (!realtimeSocket?.connected || document.visibilityState !== "visible") return;
+    const now = Date.now();
+    if (now - lastActivitySignalAt < 12_000) return;
+    lastActivitySignalAt = now;
+    realtimeSocket.emit("presence:activity");
+}
+
 function connectTaskUpdates() {
     if (!props.authenticated || props.preview) return;
     realtimeSocket?.close();
@@ -337,6 +508,7 @@ function connectTaskUpdates() {
         transports: ["websocket", "polling"],
         withCredentials: true,
     });
+    realtimeSocket.on("connect", signalAgentActivity);
     realtimeSocket.on("agent:task", (payload: { taskId?: string }) => {
         if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
         realtimeRefreshTimer = window.setTimeout(async () => {
@@ -346,10 +518,100 @@ function connectTaskUpdates() {
             }
         }, 120);
     });
+    realtimeSocket.on("agent:proactive", (interaction: PetAgentInteraction) => {
+        proactiveInteraction.value = interaction;
+        bubbleVisible.value = true;
+        petHidden.value = false;
+        clearBubbleTimer();
+        playPetMotion("happy", 1700);
+        if (isOpen.value) markProactiveSeen();
+    });
+}
+
+async function loadAgentProfile() {
+    if (!props.authenticated || props.preview) return;
+    const response = await petAgentService.getProfile(10);
+    agentProfile.value = response.data.profile;
+    agentSettings.value = { ...response.data.profile.settings };
+    proactiveInteraction.value = response.data.interactions.find((item) => item.status === "unseen") || null;
+    if (proactiveInteraction.value) {
+        bubbleVisible.value = true;
+        clearBubbleTimer();
+    }
+}
+
+async function saveAgentSettings() {
+    if (settingsSaving.value) return;
+    if (props.preview) {
+        settingsOpen.value = false;
+        message.success("主动陪伴设置已保存（开发预览）");
+        return;
+    }
+    settingsSaving.value = true;
+    try {
+        agentProfile.value = (await petAgentService.updateSettings(agentSettings.value)).data;
+        agentSettings.value = { ...agentProfile.value.settings };
+        settingsOpen.value = false;
+        message.success(agentSettings.value.proactiveEnabled ? "小Y 会按新节奏陪伴你" : "已关闭主动陪伴");
+    } finally {
+        settingsSaving.value = false;
+    }
+}
+
+async function markProactiveSeen() {
+    const interaction = proactiveInteraction.value;
+    if (!interaction || interaction.status !== "unseen" || props.preview) return;
+    try {
+        proactiveInteraction.value = (await petAgentService.setInteractionState(interaction.id, "seen")).data;
+    } catch (_error) {
+        return;
+    }
+}
+
+async function feedbackProactive(feedback: "liked" | "disliked") {
+    const interaction = proactiveInteraction.value;
+    if (!interaction) return;
+    if (props.preview) {
+        proactiveInteraction.value = { ...interaction, feedback, status: "seen" };
+        return;
+    }
+    proactiveInteraction.value = (await petAgentService.sendInteractionFeedback(interaction.id, feedback)).data;
+    message.success(feedback === "liked" ? "收到，今后会多一点这种风格" : "收到，今后会减少类似内容");
+}
+
+async function dismissProactive() {
+    const interaction = proactiveInteraction.value;
+    proactiveInteraction.value = null;
+    if (!interaction || props.preview) return;
+    await petAgentService.sendInteractionFeedback(interaction.id, "dismissed").catch(() => undefined);
+}
+
+function useProactiveSuggestion() {
+    const taskId = proactiveInteraction.value?.metadata?.taskId;
+    if (typeof taskId === "string" && taskId) {
+        selectTask(taskId);
+        markProactiveSeen();
+        return;
+    }
+    const suggestion = proactiveInteraction.value?.suggestion;
+    if (!suggestion) return;
+    startNewTask();
+    messageText.value = suggestion;
+    markProactiveSeen();
+}
+
+function handleUserActivity() {
+    signalAgentActivity();
+}
+
+function handleVisibilityActivity() {
+    if (document.visibilityState === "visible") signalAgentActivity();
 }
 
 const terminalStatuses: PetTaskStatus[] = ["completed", "failed", "cancelled"];
 const terminalStatus = computed(() => Boolean(activeTask.value && terminalStatuses.includes(activeTask.value.status)));
+const graphMessageBlocked = computed(() => activeTask.value?.context.execution?.engine === "langgraph" && activeTask.value.status !== "waiting_input");
+const graphMessageHint = computed(() => terminalStatus.value ? "任务已结束，可新建任务继续" : activeTask.value?.status === "waiting_approval" ? "请先确认或拒绝当前操作" : activeTask.value?.status === "paused" ? "请先继续任务，等待需要补充信息时再发送" : "任务正在处理，需要补充信息时可继续输入");
 const hasRunningTask = computed(() => tasks.value.some((task) => ["running", "queued", "waiting_approval"].includes(task.status)));
 const currentTone = computed(() => statusTone(activeTask.value?.status || (hasRunningTask.value ? "running" : "completed")));
 const currentStatusText = computed(() => statusLabel(activeTask.value?.status || (hasRunningTask.value ? "running" : "completed")));
@@ -366,6 +628,7 @@ const normalizedPlan = computed(() => (activeTask.value?.context?.plan || []).ma
 }));
 const completedStepCount = computed(() => normalizedPlan.value.filter((step) => ["completed", "skipped"].includes(step.status)).length);
 const launcherTask = computed(() => activeTask.value || tasks.value.find((task) => !terminalStatuses.includes(task.status)) || tasks.value[0] || null);
+const isProcessing = computed(() => ["running", "queued"].includes(launcherTask.value?.status || ""));
 const launcherPlan = computed(() => (launcherTask.value?.context?.plan || []).map((step, index) => {
     if (typeof step === "string") return { id: `legacy_${index}`, title: step, status: "pending" as const };
     return step;
@@ -389,10 +652,31 @@ const launcherHint = computed(() => {
     const runningStep = launcherPlan.value.find((step) => step.status === "running" || step.status === "waiting");
     return runningStep ? `正在处理：${runningStep.title}` : "我正在自主执行，完成后会告诉你。";
 });
+const isLateNight = computed(() => currentHour.value >= 23 || currentHour.value < 6);
+const petVisualState = computed<PetVisualState>(() => {
+    if (isDragging.value || ["happy", "celebrate"].includes(petMotion.value)) return "celebrate";
+    if (petMotion.value === "focus" || isProcessing.value) return "thinking";
+    if (isOpen.value) return "work";
+    if (isLateNight.value && !hasRunningTask.value) return "sleep";
+    return "idle";
+});
+const petImage = computed(() => ({
+    idle: mascotIdle,
+    thinking: petThinking,
+    work: petWork,
+    celebrate: petCelebrate,
+    sleep: petSleep,
+})[petVisualState.value]);
 const launcherStyle = computed(() => launcherPosition.value
     ? { left: `${launcherPosition.value.x}px`, top: `${launcherPosition.value.y}px`, right: "auto", bottom: "auto" }
     : undefined);
 const bubbleOpensRight = computed(() => Boolean(launcherPosition.value && launcherPosition.value.x < viewportWidth.value / 2));
+const chatBubbleBelow = computed(() => chatBubblePosition.value.below);
+const chatBubbleStyle = computed(() => ({
+    left: `${chatBubblePosition.value.left}px`,
+    top: `${chatBubblePosition.value.top}px`,
+    "--pet-anchor-x": `${chatBubblePosition.value.arrowX}px`,
+}));
 
 function statusTone(status: PetTaskStatus | string) {
     if (["running", "queued"].includes(status)) return "running";
@@ -405,8 +689,48 @@ function statusLabel(status: PetTaskStatus | string) {
     return ({ scheduled: "等待指定时间", queued: "准备开始", running: "正在执行", waiting_approval: "等待你的确认", waiting_input: "等待补充信息", paused: "任务已暂停", completed: "随时待命", failed: "任务遇到问题", cancelled: "任务已取消" } as Record<string, string>)[status] || "随时待命";
 }
 
+const metricsSuccessRate = computed(() => agentMetrics.value?.tasks.successRate == null ? "—" : `${Math.round(agentMetrics.value.tasks.successRate * 100)}%`);
+const diagnosticStatusLabel = computed(() => {
+    if (diagnosticsLoading.value) return "正在分析";
+    if (!taskDiagnostics.value) return "模型、工具与预算";
+    return taskDiagnostics.value.warnings.length ? `${taskDiagnostics.value.warnings.length} 项需关注` : "运行健康";
+});
+
+function formatCompactNumber(value: number) {
+    return new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value || 0);
+}
+
+function budgetPercent(used: number, maximum: number) {
+    if (!maximum) return "0%";
+    return `${Math.min(100, Math.max(0, Math.round((used / maximum) * 100)))}%`;
+}
+
 function formatSchedule(value: string) {
     return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
+
+async function loadAgentMetrics() {
+    if (props.preview || !props.authenticated) return;
+    agentMetrics.value = (await petAgentService.getMetrics()).data;
+}
+
+async function loadTaskDiagnostics(taskId = activeTask.value?.id) {
+    if (!taskId || props.preview || !props.authenticated) return;
+    diagnosticsLoading.value = true;
+    try {
+        taskDiagnostics.value = (await petAgentService.getTaskDiagnostics(taskId)).data;
+    } finally {
+        diagnosticsLoading.value = false;
+    }
+}
+
+async function toggleDiagnostics() {
+    diagnosticsOpen.value = !diagnosticsOpen.value;
+    if (diagnosticsOpen.value && activeTask.value) {
+        await loadTaskDiagnostics(activeTask.value.id).catch(() => {
+            taskDiagnostics.value = null;
+        });
+    }
 }
 
 async function loadTasks(selectActive = false) {
@@ -423,6 +747,7 @@ async function loadActiveTask() {
     if (index >= 0) tasks.value[index] = response.data;
     await nextTick();
     if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight;
+    if (diagnosticsOpen.value) await loadTaskDiagnostics(response.data.id).catch(() => undefined);
 }
 
 async function selectTask(id: string) {
@@ -433,13 +758,91 @@ async function selectTask(id: string) {
     if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight;
 }
 
+function openAttachmentPicker() {
+    attachmentInput.value?.click();
+}
+
+function revokeAttachmentPreview(image: PendingAttachment) {
+    if (image.previewUrl.startsWith("blob:")) URL.revokeObjectURL(image.previewUrl);
+}
+
+function clearAttachments() {
+    pendingAttachments.value.forEach(revokeAttachmentPreview);
+    pendingAttachments.value = [];
+    if (attachmentInput.value) attachmentInput.value.value = "";
+}
+
+function removeAttachment(id: string) {
+    const image = pendingAttachments.value.find((item) => item.id === id);
+    if (image) revokeAttachmentPreview(image);
+    pendingAttachments.value = pendingAttachments.value.filter((item) => item.id !== id);
+}
+
+function readFileAsDataUrl(file: File) {
+    return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("图片读取失败"));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function handleAttachmentSelection(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const selected = Array.from(input.files || []);
+    input.value = "";
+    if (!selected.length) return;
+
+    const availableSlots = 6 - pendingAttachments.value.length;
+    if (availableSlots <= 0) {
+        message.warning("一次任务最多添加 6 张图片");
+        return;
+    }
+    if (selected.length > availableSlots) message.warning(`最多还能添加 ${availableSlots} 张图片`);
+
+    const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+    const files = selected.slice(0, availableSlots).filter((file) => {
+        if (!allowedTypes.has(file.type)) {
+            message.error(`${file.name} 不是支持的图片格式`);
+            return false;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            message.error(`${file.name} 超过 5MB`);
+            return false;
+        }
+        return true;
+    });
+    if (!files.length) return;
+
+    attachmentUploading.value = true;
+    try {
+        for (const file of files) {
+            const previewUrl = props.preview ? await readFileAsDataUrl(file) : URL.createObjectURL(file);
+            try {
+                const url = props.preview ? previewUrl : (await uploadService.uploadImage(file, "common")).data?.url;
+                if (!url) throw new Error("上传接口没有返回图片地址");
+                pendingAttachments.value.push({
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    name: file.name,
+                    url,
+                    previewUrl,
+                });
+            } catch (error) {
+                if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+                message.error(`${file.name} 上传失败：${error instanceof Error ? error.message : "请稍后重试"}`);
+            }
+        }
+    } finally {
+        attachmentUploading.value = false;
+    }
+}
+
 function startNewTask() {
     activeTask.value = null;
     messageText.value = "";
     scheduleEnabled.value = false;
     scheduledAt.value = "";
-    attachmentEnabled.value = false;
-    attachmentUrl.value = "";
+    clearAttachments();
 }
 
 function useExample() {
@@ -448,7 +851,7 @@ function useExample() {
 
 async function submitMessage() {
     const content = messageText.value.trim();
-    if (!content || submitting.value) return;
+    if (!content || graphMessageBlocked.value || submitting.value || attachmentUploading.value) return;
     if (scheduleEnabled.value) {
         const scheduleTime = new Date(scheduledAt.value).getTime();
         if (!scheduledAt.value || !Number.isFinite(scheduleTime)) {
@@ -462,13 +865,7 @@ async function submitMessage() {
     }
     submitting.value = true;
     try {
-        const attachments = attachmentEnabled.value && attachmentUrl.value.trim()
-            ? [{ type: "image" as const, url: attachmentUrl.value.trim(), name: "用户提供的图片" }]
-            : [];
-        if (attachments.length && !/^https?:\/\//i.test(attachments[0].url)) {
-            message.error("图片附件必须是可公开访问的 HTTP(S) URL");
-            return;
-        }
+        const attachments = pendingAttachments.value.map((image) => ({ type: "image" as const, url: image.url, name: image.name }));
         if (props.preview) {
             const now = new Date().toISOString();
             const previewTask: PetTask = {
@@ -507,8 +904,8 @@ async function submitMessage() {
             messageText.value = "";
             scheduleEnabled.value = false;
             scheduledAt.value = "";
-            attachmentEnabled.value = false;
-            attachmentUrl.value = "";
+            clearAttachments();
+            playPetMotion("celebrate", 1500);
             message.success("开发预览任务已生成");
             return;
         }
@@ -519,9 +916,9 @@ async function submitMessage() {
         messageText.value = "";
         scheduleEnabled.value = false;
         scheduledAt.value = "";
-        attachmentEnabled.value = false;
-        attachmentUrl.value = "";
+        clearAttachments();
         await loadTasks();
+        playPetMotion("celebrate", 1500);
         message.success(response.data.status === "scheduled" ? "任务已安排，到时间后小Y会自动执行" : "任务已交给小Y");
     } finally {
         submitting.value = false;
@@ -549,16 +946,66 @@ async function pauseTask() { if (activeTask.value) activeTask.value = props.prev
 async function resumeTask() { if (activeTask.value) activeTask.value = props.preview ? { ...activeTask.value, status: "running" } : (await petAgentService.resume(activeTask.value.id)).data; }
 async function cancelTask() { if (activeTask.value) activeTask.value = props.preview ? { ...activeTask.value, status: "cancelled", pendingAction: null } : (await petAgentService.cancel(activeTask.value.id)).data; }
 
-async function toggleDrawer() {
-    isOpen.value = !isOpen.value;
-    if (isOpen.value) {
-        if (props.authenticated && !props.preview) await loadTasks(true);
-        await nextTick();
-        drawerRef.value?.focus();
+function queueChatBubblePosition() {
+    if (!isOpen.value) return;
+    if (chatPositionFrame) window.cancelAnimationFrame(chatPositionFrame);
+    chatPositionFrame = window.requestAnimationFrame(() => {
+        chatPositionFrame = null;
+        updateChatBubblePosition();
+    });
+}
+
+function updateChatBubblePosition() {
+    if (!isOpen.value || !launcherRef.value || !drawerRef.value) return;
+    const petRect = launcherRef.value.getBoundingClientRect();
+    const bubbleRect = drawerRef.value.getBoundingClientRect();
+    const margin = window.innerWidth <= 620 ? 10 : 14;
+    const gap = window.innerWidth <= 620 ? 10 : 14;
+    const centerX = petRect.left + petRect.width / 2;
+    const maxLeft = Math.max(margin, window.innerWidth - bubbleRect.width - margin);
+    const left = Math.min(Math.max(centerX - bubbleRect.width / 2, margin), maxLeft);
+    let top = petRect.top - bubbleRect.height - gap;
+    let below = false;
+
+    if (top < margin) {
+        below = true;
+        top = petRect.bottom + gap;
     }
+    const maxTop = Math.max(margin, window.innerHeight - bubbleRect.height - margin);
+    top = Math.min(Math.max(top, margin), maxTop);
+    const arrowX = Math.min(Math.max(centerX - left, 30), Math.max(30, bubbleRect.width - 30));
+    chatBubblePosition.value = { left, top, arrowX, below };
+}
+
+function observeChatBubble() {
+    chatResizeObserver?.disconnect();
+    if (!drawerRef.value || typeof ResizeObserver === "undefined") return;
+    chatResizeObserver = new ResizeObserver(queueChatBubblePosition);
+    chatResizeObserver.observe(drawerRef.value);
+}
+
+async function toggleDrawer() {
+    if (isOpen.value) {
+        await closeDrawer();
+        return;
+    }
+    if (props.authenticated && !props.preview) {
+        await loadTasks(true);
+        loadAgentMetrics().catch(() => undefined);
+    }
+    chatBubbleReady.value = false;
+    isOpen.value = true;
+    await nextTick();
+    updateChatBubblePosition();
+    chatBubbleReady.value = true;
+    observeChatBubble();
+    drawerRef.value?.focus();
+    markProactiveSeen();
 }
 async function closeDrawer() {
     isOpen.value = false;
+    chatBubbleReady.value = false;
+    chatResizeObserver?.disconnect();
     await nextTick();
     launcherButtonRef.value?.focus();
 }
@@ -569,21 +1016,6 @@ function handleDrawerKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
         event.preventDefault();
         closeDrawer();
-        return;
-    }
-    if (event.key !== "Tab" || !drawerRef.value) return;
-    const focusable = Array.from(
-        drawerRef.value.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
-    ).filter((element) => element.offsetParent !== null);
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
     }
 }
 
@@ -604,7 +1036,7 @@ function startDrag(event: PointerEvent) {
     if (event.button !== 0 || !launcherRef.value) return;
     const rect = launcherRef.value.getBoundingClientRect();
     clearMotionTimers();
-    petMotion.value = "idle";
+    petMotion.value = "happy";
     dragState = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: rect.left, originY: rect.top };
     if (event.currentTarget instanceof HTMLElement) event.currentTarget.setPointerCapture(event.pointerId);
 }
@@ -617,6 +1049,7 @@ function moveDrag(event: PointerEvent) {
     isDragging.value = true;
     suppressLauncherClick = true;
     launcherPosition.value = clampPosition(dragState.originX + deltaX, dragState.originY + deltaY);
+    queueChatBubblePosition();
 }
 
 function endDrag(event: PointerEvent) {
@@ -625,6 +1058,8 @@ function endDrag(event: PointerEvent) {
     if (event.currentTarget instanceof HTMLElement && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     dragState = null;
     isDragging.value = false;
+    playPetMotion("happy", 900);
+    queueChatBubblePosition();
     schedulePetMotion();
 }
 
@@ -633,8 +1068,8 @@ async function handleLauncherClick() {
         suppressLauncherClick = false;
         return;
     }
-    playPetMotion("hop", 760);
     await toggleDrawer();
+    playPetMotion(isOpen.value ? "happy" : "wave", 760);
 }
 
 function clearMotionTimers() {
@@ -645,7 +1080,7 @@ function clearMotionTimers() {
 }
 
 function playPetMotion(motion: PetMotion, duration = 1100) {
-    if (isDragging.value) return;
+    if (isDragging.value && motion !== "happy") return;
     if (motionResetTimer) window.clearTimeout(motionResetTimer);
     petMotion.value = motion;
     motionResetTimer = window.setTimeout(() => {
@@ -658,9 +1093,8 @@ function schedulePetMotion() {
     if (motionTimer) window.clearTimeout(motionTimer);
     const delay = 3200 + Math.round(Math.random() * 4200);
     motionTimer = window.setTimeout(() => {
-        if (!isOpen.value && !petHidden.value && !isDragging.value && !isHoveringPet) {
-            const motions: PetMotion[] = ["hop", "peek", "wiggle", "float"];
-            playPetMotion(motions[Math.floor(Math.random() * motions.length)], 1150);
+        if (!isOpen.value && !petHidden.value && !isDragging.value && !isHoveringPet && !isProcessing.value && !isLateNight.value) {
+            playPetMotion(Math.random() > .42 ? "focus" : "happy", 1500);
         }
         schedulePetMotion();
     }, delay);
@@ -692,6 +1126,8 @@ function hidePet() {
     clearBubbleTimer();
     petHidden.value = true;
     isOpen.value = false;
+    chatBubbleReady.value = false;
+    chatResizeObserver?.disconnect();
     localStorage.setItem(HIDDEN_KEY, "true");
 }
 
@@ -723,10 +1159,12 @@ function handleViewportResize() {
         launcherPosition.value = clampPosition(launcherPosition.value.x, launcherPosition.value.y);
         persistPosition();
     }
+    queueChatBubblePosition();
 }
 
 onMounted(() => {
     viewportWidth.value = window.innerWidth;
+    currentHour.value = new Date().getHours();
     bubbleVisible.value = localStorage.getItem(BUBBLE_KEY) !== "false";
     petHidden.value = localStorage.getItem(HIDDEN_KEY) === "true";
     try {
@@ -740,20 +1178,46 @@ onMounted(() => {
     }
     window.addEventListener("resize", handleViewportResize);
     window.addEventListener("keydown", handleDrawerKeydown);
+    window.addEventListener("pointerdown", handleUserActivity, { passive: true });
+    window.addEventListener("keydown", handleUserActivity, { passive: true });
+    document.addEventListener("visibilitychange", handleVisibilityActivity);
+    clockTimer = window.setInterval(() => { currentHour.value = new Date().getHours(); }, 60_000);
     schedulePetMotion();
     scheduleBubbleAutoHide();
     if (props.authenticated && !props.preview) {
         loadTasks().catch(() => undefined);
+        loadAgentProfile().catch(() => undefined);
         connectTaskUpdates();
     }
+});
+const approvalHint = computed(() => {
+    const type = activeTask.value?.pendingAction?.type;
+    if (type === "send_direct_message") return "批准后会立即把这段内容发送给对方。";
+    if (type === "send_friend_request") return "批准后对方会收到一条好友申请。";
+    if (type === "accept_friend_request" || type === "reject_friend_request") return "批准后会更新这条好友申请的状态。";
+    if (type === "follow_user") return "批准后会立即关注该用户。";
+    return "批准后会立即执行，操作结果会记录在任务中。";
+});
+const approvalPayloadPreview = computed(() => {
+    const action = activeTask.value?.pendingAction;
+    if (action?.type === "send_direct_message") return String(action.payload?.content || "");
+    if (action?.type === "send_friend_request") return String(action.payload?.message || "");
+    return "";
 });
 onBeforeUnmount(() => {
     realtimeSocket?.close();
     if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+    if (clockTimer) window.clearInterval(clockTimer);
+    if (chatPositionFrame) window.cancelAnimationFrame(chatPositionFrame);
+    chatResizeObserver?.disconnect();
     clearMotionTimers();
     clearBubbleTimer();
+    clearAttachments();
     window.removeEventListener("resize", handleViewportResize);
     window.removeEventListener("keydown", handleDrawerKeydown);
+    window.removeEventListener("pointerdown", handleUserActivity);
+    window.removeEventListener("keydown", handleUserActivity);
+    document.removeEventListener("visibilitychange", handleVisibilityActivity);
 });
 
 watch(
@@ -764,6 +1228,32 @@ watch(
             bubbleVisible.value = true;
             clearBubbleTimer();
         }
+        if (status === "completed") playPetMotion("celebrate", 1900);
+    }
+);
+
+watch(
+    () => [launcherTask.value?.id || "", launcherTask.value?.context?.plan?.length || 0] as const,
+    ([taskId, length], [previousTaskId, previousLength]) => {
+        if (taskId && taskId === previousTaskId && length > previousLength) playPetMotion("celebrate", 1500);
+        queueChatBubblePosition();
+    }
+);
+
+watch(
+    () => [launcherTask.value?.id || "", draft.value?.title || ""] as const,
+    ([taskId, title], [previousTaskId, previousTitle]) => {
+        if (taskId && taskId === previousTaskId && title && title !== previousTitle) playPetMotion("celebrate", 1900);
+        queueChatBubblePosition();
+    }
+);
+
+watch(
+    () => activeTask.value?.id || "",
+    (taskId, previousTaskId) => {
+        if (taskId === previousTaskId) return;
+        diagnosticsOpen.value = false;
+        taskDiagnostics.value = null;
     }
 );
 </script>
@@ -779,14 +1269,13 @@ $coral: #ff766f;
 $yellow: #ffbf2f;
 
 button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sans-serif); }
-.pet-launcher, .pet-recall, .agent-drawer { font-family: var(--xy-font-body, "Microsoft YaHei", sans-serif); }
-.pet-launcher { position: fixed; right: 26px; bottom: 24px; z-index: 1100; width: 86px; height: 86px; transition: transform .22s ease, opacity .2s ease; }
-.pet-launcher--open { transform: translateX(-430px); }
+.pet-launcher, .pet-recall, .agent-bubble { font-family: var(--xy-font-body, "Microsoft YaHei", sans-serif); }
+.pet-launcher { position: fixed; right: 26px; bottom: 24px; z-index: 1100; width: 96px; height: 96px; transition: opacity .2s ease; }
 .pet-launcher__orb { position: relative; width: 100%; height: 100%; overflow: visible; border: 0; background: transparent; cursor: grab; padding: 0; filter: drop-shadow(0 10px 16px rgba(12, 41, 79, .16)); touch-action: none; user-select: none; transition: transform .22s ease, filter .22s ease; }
 .pet-launcher__orb:hover { transform: translateY(-5px) rotate(-2deg); filter: drop-shadow(0 14px 20px rgba(12, 41, 79, .2)); }
 .pet-launcher--dragging { transition: none; }
 .pet-launcher--dragging .pet-launcher__orb { cursor: grabbing; transform: scale(1.06) rotate(2deg); filter: drop-shadow(0 18px 24px rgba(12, 41, 79, .24)); }
-.pet-launcher__orb img { position: relative; z-index: 2; width: 100%; height: 100%; object-fit: contain; pointer-events: none; transform-origin: 50% 82%; animation: pet-breathe 3.8s ease-in-out infinite; will-change: transform; }
+.pet-launcher__orb img { position: relative; z-index: 2; width: 100%; height: 100%; object-fit: contain; pointer-events: none; transform-origin: 50% 82%; will-change: transform; }
 .pet-launcher__aura { position: absolute; z-index: 0; inset: 12px; border-radius: 50%; background: radial-gradient(circle, rgba(85,221,181,.2), rgba(81,185,223,.07) 48%, transparent 70%); opacity: .65; animation: pet-aura-breathe 3.8s ease-in-out infinite; }
 .pet-launcher__shadow { position: absolute; z-index: 1; left: 22%; right: 22%; bottom: 6px; height: 10px; border-radius: 50%; background: rgba(12,41,79,.16); filter: blur(5px); animation: pet-shadow-breathe 3.8s ease-in-out infinite; }
 .pet-launcher__spark { position: absolute; z-index: 4; width: 8px; height: 8px; opacity: 0; pointer-events: none; }
@@ -794,18 +1283,21 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .pet-launcher__spark--one { left: 0; top: 18px; }
 .pet-launcher__spark--two { right: 1px; top: 4px; transform: scale(.75); }
 .pet-launcher__spark--three { right: -2px; bottom: 14px; transform: scale(.55); }
-.pet-launcher--motion-hop .pet-launcher__orb img { animation: pet-hop .86s cubic-bezier(.2,.8,.2,1); }
-.pet-launcher--motion-peek .pet-launcher__orb img { animation: pet-peek 1.05s ease-in-out; }
-.pet-launcher--motion-wiggle .pet-launcher__orb img { animation: pet-wiggle .95s ease-in-out; }
-.pet-launcher--motion-float .pet-launcher__orb img { animation: pet-float 1.15s ease-in-out; }
+.pet-launcher--state-idle .pet-launcher__orb img { animation: pet-breathe 3.8s ease-in-out infinite; }
+.pet-launcher--state-thinking .pet-launcher__orb img { animation: pet-think 1.8s ease-in-out infinite; }
+.pet-launcher--state-work .pet-launcher__orb img { animation: pet-work 1.45s ease-in-out infinite; }
+.pet-launcher--state-sleep .pet-launcher__orb img { animation: pet-sleep 4.8s ease-in-out infinite; }
+.pet-launcher--state-celebrate .pet-launcher__orb img { animation: pet-happy .78s ease-in-out infinite; }
+.pet-launcher--motion-focus .pet-launcher__orb img { animation: pet-focus 1.5s ease-in-out; }
+.pet-launcher--motion-happy .pet-launcher__orb img { animation: pet-happy .78s ease-in-out 2; }
+.pet-launcher--motion-celebrate .pet-launcher__orb img { animation: pet-celebrate 1.05s cubic-bezier(.2,.8,.2,1) 2; }
 .pet-launcher--motion-wave .pet-launcher__orb img { animation: pet-wave .8s ease-in-out 2; }
-.pet-launcher--motion-hop .pet-launcher__spark, .pet-launcher--motion-wave .pet-launcher__spark, .pet-launcher--busy .pet-launcher__spark { animation: pet-sparkle 1.05s ease-out; }
-.pet-launcher--motion-hop .pet-launcher__spark--two, .pet-launcher--motion-wave .pet-launcher__spark--two, .pet-launcher--busy .pet-launcher__spark--two { animation-delay: .13s; }
-.pet-launcher--motion-hop .pet-launcher__spark--three, .pet-launcher--motion-wave .pet-launcher__spark--three, .pet-launcher--busy .pet-launcher__spark--three { animation-delay: .28s; }
+.pet-launcher--motion-happy .pet-launcher__spark, .pet-launcher--motion-celebrate .pet-launcher__spark, .pet-launcher--motion-wave .pet-launcher__spark, .pet-launcher--busy .pet-launcher__spark { animation: pet-sparkle 1.05s ease-out; }
+.pet-launcher--motion-happy .pet-launcher__spark--two, .pet-launcher--motion-celebrate .pet-launcher__spark--two, .pet-launcher--motion-wave .pet-launcher__spark--two, .pet-launcher--busy .pet-launcher__spark--two { animation-delay: .13s; }
+.pet-launcher--motion-happy .pet-launcher__spark--three, .pet-launcher--motion-celebrate .pet-launcher__spark--three, .pet-launcher--motion-wave .pet-launcher__spark--three, .pet-launcher--busy .pet-launcher__spark--three { animation-delay: .28s; }
 .pet-launcher--busy .pet-launcher__aura { animation: pet-work-aura 1.25s ease-in-out infinite; }
-.pet-launcher--busy.pet-launcher--motion-idle .pet-launcher__orb img { animation: pet-work 1.45s ease-in-out infinite; }
 .pet-launcher--busy .pet-launcher__spark { animation-iteration-count: infinite; animation-duration: 1.8s; }
-.pet-launcher--dragging .pet-launcher__orb img { animation: pet-drag-grip .55s ease-in-out infinite alternate; }
+.pet-launcher--dragging .pet-launcher__orb img { animation: pet-drag-happy .48s ease-in-out infinite alternate; }
 .pet-launcher--dragging .pet-launcher__shadow { transform: scaleX(.72); opacity: .5; }
 .pet-launcher__status { position: absolute; top: 8px; right: 5px; width: 13px; height: 13px; border-radius: 50%; background: $mint; border: 3px solid white; box-shadow: 0 0 0 1px rgba(12,41,79,.08); animation: pet-pulse 1.6s infinite; }
 .pet-launcher__bubble { position: absolute; right: 76px; top: -24px; width: 238px; color: $navy; background: rgba(255,255,255,.97); border: 1px solid rgba(12,41,79,.1); border-radius: 18px 18px 5px 18px; padding: 12px 13px 10px; box-shadow: 0 16px 40px rgba(12,41,79,.15); backdrop-filter: blur(12px); cursor: default; }
@@ -832,9 +1324,12 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .pet-bubble-enter-from, .pet-bubble-leave-to { opacity: 0; transform: translateX(8px) scale(.96); }
 .pet-launcher--bubble-right .pet-bubble-enter-from, .pet-launcher--bubble-right .pet-bubble-leave-to { transform: translateX(-8px) scale(.96); }
 .pet-recall-enter-from, .pet-recall-leave-to { opacity: 0; transform: translateX(100%); }
-.agent-backdrop { position: fixed; z-index: 1080; inset: 0; border: 0; background: rgba(12, 41, 79, .17); backdrop-filter: blur(1px); }
-.agent-drawer { position: fixed; z-index: 1090; top: 0; right: 0; width: 440px; height: 100dvh; display: flex; flex-direction: column; background: $paper; color: $navy; border-left: 1px solid rgba(12,41,79,.1); box-shadow: -18px 0 50px rgba(12,41,79,.13); }
-.agent-header { min-height: 78px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid $line; }
+.agent-bubble { position: fixed; z-index: 1090; width: min(430px, calc(100vw - 28px)); height: min(680px, calc(100dvh - 28px), 74dvh); display: flex; flex-direction: column; overflow: visible; visibility: hidden; background: $paper; color: $navy; border: 1.5px solid rgba(12,41,79,.82); border-radius: 24px 24px 22px 22px; box-shadow: 0 22px 58px rgba(12,41,79,.19), 0 3px 10px rgba(12,41,79,.08); transform-origin: var(--pet-anchor-x) calc(100% + 13px); }
+.agent-bubble--ready { visibility: visible; }
+.agent-bubble::after { content: ""; position: absolute; left: var(--pet-anchor-x); bottom: -10px; width: 18px; height: 18px; background: $paper; border-right: 1.5px solid rgba(12,41,79,.82); border-bottom: 1.5px solid rgba(12,41,79,.82); transform: translateX(-50%) rotate(45deg); }
+.agent-bubble--below { transform-origin: var(--pet-anchor-x) -13px; }
+.agent-bubble--below::after { top: -10px; bottom: auto; border: 0; border-top: 1.5px solid rgba(12,41,79,.82); border-left: 1.5px solid rgba(12,41,79,.82); }
+.agent-header { position: relative; z-index: 1; min-height: 68px; padding: 11px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid $line; border-radius: 23px 23px 0 0; background: $paper; }
 .agent-header__identity { display: flex; align-items: center; gap: 11px; }
 .agent-header__avatar { width: 46px; height: 46px; border-radius: 50%; background: #e8faf5; overflow: hidden; border: 1px solid #c5eee2; }
 .agent-header__avatar img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.35) translateY(3px); }
@@ -848,7 +1343,26 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .agent-header__actions { display: flex; gap: 4px; }
 .agent-header__actions button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: $navy; cursor: pointer; }
 .agent-header__actions button:hover { background: #f0f8f6; }
+.agent-header__actions button.active { color: $mint-dark; background: #e8faf5; }
 .agent-header__actions svg { width: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.agent-settings { position: relative; z-index: 1; flex: 0 0 auto; padding: 13px 16px 14px; border-bottom: 1px solid $line; background: linear-gradient(180deg, #f7fffc, #fff); box-shadow: 0 8px 18px rgba(12,41,79,.05); }
+.agent-settings__head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.agent-settings__head > div { display: flex; flex-direction: column; gap: 2px; }
+.agent-settings__head strong { font-size: 13px; }
+.agent-settings__head span { color: $muted; font-size: 10px; }
+.agent-switch { position: relative; flex: 0 0 auto; width: 38px; height: 22px; cursor: pointer; }
+.agent-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.agent-switch span { position: absolute; inset: 0; border-radius: 99px; background: #cfd8e3; transition: background .2s ease; }
+.agent-switch span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: white; box-shadow: 0 2px 5px rgba(12,41,79,.18); transition: transform .2s ease; }
+.agent-switch input:checked + span { background: $mint; }
+.agent-switch input:checked + span::after { transform: translateX(16px); }
+.agent-settings__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 12px; }
+.agent-settings__grid label { display: flex; flex-direction: column; gap: 4px; color: $muted; font-size: 10px; }
+.agent-settings__grid select, .agent-settings__grid input { width: 100%; height: 32px; padding: 0 8px; border: 1px solid $line; border-radius: 8px; background: white; color: $navy; font-size: 11px; outline: none; }
+.agent-settings__grid select:focus, .agent-settings__grid input:focus { border-color: $mint; box-shadow: 0 0 0 3px rgba(85,221,181,.12); }
+.agent-settings__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 11px; }
+.agent-settings__foot span { max-width: 275px; color: #8b98aa; font-size: 9px; line-height: 1.45; }
+.agent-settings__foot button { flex: 0 0 auto; padding: 6px 12px; border: 0; border-radius: 8px; background: $navy; color: white; font-size: 11px; cursor: pointer; }
 .agent-content--guest { display: grid; place-items: center; padding: 28px; }
 .guest-gate { width: 100%; max-width: 330px; text-align: center; }
 .guest-gate__art { width: 118px; height: 118px; margin: 0 auto 4px; }
@@ -866,6 +1380,17 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .task-rail button.active { color: $navy; border-color: $mint; background: #f0fcf8; }
 .agent-content { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 18px 30px; scroll-behavior: smooth; scrollbar-width: none; }
 .agent-content::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.proactive-card { position: relative; display: grid; grid-template-columns: 52px 1fr; gap: 10px; margin-bottom: 16px; padding: 12px 36px 12px 10px; border: 1px solid #bfeee1; border-radius: 16px 16px 16px 5px; background: linear-gradient(135deg, #ecfcf7, #fffdf6); box-shadow: 0 8px 20px rgba(21,157,123,.08); animation: proactive-arrive .38s cubic-bezier(.2,.82,.22,1); }
+.proactive-card__mascot { width: 52px; height: 58px; align-self: end; }
+.proactive-card__mascot img { width: 100%; height: 100%; object-fit: contain; }
+.proactive-card__body > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 3px 8px; }
+.proactive-card__body strong { font-size: 12px; }
+.proactive-card__body small { color: #91a0b2; font-size: 9px; }
+.proactive-card__body p { margin: 7px 0 8px; color: $navy; font-size: 13px; line-height: 1.65; }
+.proactive-card__body > button { max-width: 100%; padding: 6px 9px; overflow: hidden; border: 1px solid rgba(21,157,123,.25); border-radius: 8px; background: white; color: $mint-dark; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.proactive-card__feedback { position: absolute; right: 7px; top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.proactive-card__feedback button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: $muted; font-size: 11px; cursor: pointer; filter: grayscale(1); opacity: .66; }
+.proactive-card__feedback button:hover, .proactive-card__feedback button.active { background: rgba(85,221,181,.16); filter: none; opacity: 1; }
 .agent-welcome { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 26px; }
 .agent-welcome__art { width: 142px; height: 122px; overflow: hidden; }
 .agent-welcome__art img { width: 100%; height: 100%; object-fit: contain; }
@@ -913,17 +1438,30 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .artifact-card__poster { width: 100%; max-height: 160px; margin-top: 10px; object-fit: cover; border-radius: 8px; }
 .approval-card { display: grid; grid-template-columns: 38px 1fr; gap: 11px; padding: 14px; border: 1px solid #f1d987; background: #fffdf5; }
 .approval-card__icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; color: #bd8200; background: #fff4c9; }.approval-card__icon svg { width: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
-.approval-card h3 { margin: 1px 0 4px; font-size: 14px; }.approval-card p { margin: 0; color: $muted; font-size: 12px; }
+.approval-card h3 { margin: 1px 0 4px; font-size: 14px; }.approval-card p { margin: 0; color: $muted; font-size: 12px; }.approval-card blockquote { max-height: 86px; margin: 8px 0 0; padding: 7px 9px; overflow: auto; border-left: 3px solid #e1bc52; border-radius: 4px; background: rgba(255, 255, 255, .72); color: $navy; font-size: 11px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }.approval-card small { display: block; margin-top: 5px; color: #9a7a26; font-size: 10px; line-height: 1.45; }
 .approval-card__actions { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1.25fr; gap: 8px; margin-top: 4px; }.approval-card__actions button { height: 36px; border-radius: 8px; font-size: 13px; cursor: pointer; }.approval-card__actions .secondary { border: 1px solid $line; background: white; color: $navy; }.approval-card__actions .primary { border: 1px solid $mint-dark; background: $mint; color: $navy; font-weight: 600; }
 .result-card { display: flex; gap: 10px; padding: 14px; background: #edf9f5; }.result-card svg { flex: 0 0 auto; width: 24px; height: 24px; padding: 4px; border-radius: 50%; background: $mint; fill: none; stroke: $navy; stroke-width: 2; }.result-card strong, .error-card strong { font-size: 14px; }.result-card p, .error-card p { margin: 4px 0 0; color: $muted; font-size: 12px; line-height: 1.6; }
 .error-card { padding: 13px; border: 1px solid #ffc5c1; background: #fff7f6; }
-.agent-composer { flex: 0 0 auto; padding: 11px 15px 14px; border-top: 1px solid $line; background: white; }
+.agent-health { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 13px; }.agent-health span { display: grid; gap: 2px; padding: 9px 6px; border: 1px solid $line; border-radius: 9px; background: rgba(255,255,255,.78); }.agent-health b { color: $navy; font-size: 15px; }.agent-health small { color: $muted; font-size: 9px; }
+.agent-health__mode { display: block; margin-top: 7px; color: $muted; font-size: 9px; }
+.diagnostic-card { padding: 0; border: 1px solid $line; background: #fbfdff; overflow: hidden; }.diagnostic-card__toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 11px 12px; border: 0; background: transparent; color: $navy; cursor: pointer; text-align: left; }.diagnostic-card__toggle > span:first-child { display: grid; gap: 2px; }.diagnostic-card__toggle strong { font-size: 13px; }.diagnostic-card__toggle small { color: $muted; font-size: 10px; }.diagnostic-card__toggle > span:last-child { color: $mint-dark; font-size: 11px; }
+.diagnostic-card__body { padding: 0 12px 12px; border-top: 1px solid #edf1f5; }.diagnostic-card__loading { margin: 11px 0 0; color: $muted; font-size: 11px; }.diagnostic-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 11px 0; }.diagnostic-grid span { display: grid; gap: 3px; padding: 7px 4px; border-radius: 7px; background: white; text-align: center; }.diagnostic-grid small { color: $muted; font-size: 9px; }.diagnostic-grid b { color: $navy; font-size: 13px; }
+.budget-row { display: flex; justify-content: space-between; margin-top: 8px; color: $muted; font-size: 10px; }.budget-row b { color: $navy; font-weight: 500; }.budget-track { height: 4px; margin-top: 4px; border-radius: 999px; background: #e9eef3; overflow: hidden; }.budget-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, $mint, $mint-dark); }.diagnostic-warnings { display: grid; gap: 5px; margin-top: 10px; }.diagnostic-warnings p { margin: 0; padding: 6px 8px; border-radius: 6px; color: #9a6218; background: #fff8e8; font-size: 10px; line-height: 1.45; }.diagnostic-ok { margin: 10px 0 0; color: $mint-dark; font-size: 10px; }
+.diagnostic-trace { margin: -3px 0 9px; color: #8a98aa; font: 9px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.agent-composer { position: relative; z-index: 1; flex: 0 0 auto; padding: 11px 15px 14px; border-top: 1px solid $line; border-radius: 0 0 21px 21px; background: white; }
 .schedule-control { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }.schedule-control button { display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 1px solid $line; border-radius: 7px; background: white; color: $muted; font-size: 12px; cursor: pointer; }.schedule-control button.active { color: $mint-dark; border-color: $mint; background: #f0fcf8; }.schedule-control input { min-width: 0; flex: 1; height: 30px; padding: 0 8px; color: $navy; border: 1px solid $line; border-radius: 7px; font-size: 12px; }
 .attachment-control { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .attachment-control button { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 1px solid $line; border-radius: 7px; background: white; color: $muted; font-size: 12px; cursor: pointer; }
 .attachment-control button.active { color: $mint-dark; border-color: $mint; background: #f0fcf8; }
+.attachment-control button:disabled { opacity: .55; cursor: wait; }
 .attachment-control svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.attachment-control input { min-width: 0; flex: 1; height: 30px; padding: 0 8px; color: $navy; border: 1px solid $line; border-radius: 7px; font-size: 12px; }
+.attachment-control .attachment-input { display: none; }
+.attachment-control > span { min-width: 0; overflow: hidden; color: #98a4b4; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-previews { display: flex; gap: 7px; padding: 0 0 8px; overflow-x: auto; scrollbar-width: none; }
+.attachment-previews::-webkit-scrollbar { display: none; }
+.attachment-previews figure { position: relative; flex: 0 0 48px; width: 48px; height: 48px; margin: 0; border: 1px solid $line; border-radius: 9px; background: #f7fafc; overflow: hidden; }
+.attachment-previews img { width: 100%; height: 100%; object-fit: cover; }
+.attachment-previews button { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; color: white; background: rgba(10, 39, 72, .78); font: 14px/18px sans-serif; cursor: pointer; }
 .composer-box { display: flex; align-items: flex-end; gap: 8px; padding: 9px 9px 9px 12px; border: 1px solid #cbd7e2; border-radius: 11px; background: white; transition: border-color .2s, box-shadow .2s; }.composer-box:focus-within { border-color: $mint; box-shadow: 0 0 0 3px rgba(85,221,181,.13); }
 .composer-box textarea { flex: 1; min-height: 42px; max-height: 110px; resize: none; border: 0; outline: none; color: $navy; font-size: 13px; line-height: 1.55; }.composer-box textarea::placeholder { color: #9aa6b8; }
 .send-button { flex: 0 0 auto; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid $mint-dark; border-radius: 9px; background: $mint; color: $navy; cursor: pointer; }.send-button:disabled { opacity: .45; cursor: default; }.send-button svg { width: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
@@ -931,28 +1469,44 @@ button, textarea, input { font-family: var(--xy-font-body, "Microsoft YaHei", sa
 .task-controls { display: flex; align-items: center; gap: 9px; margin-top: 7px; font-size: 10px; color: #98a4b4; }.task-controls span { flex: 1; text-align: center; }.task-controls button { border: 0; background: transparent; color: $muted; cursor: pointer; font-size: 11px; }.task-controls .danger { color: $coral; }
 .draft-preview h1 { color: $navy; font-size: 25px; }.draft-preview__summary { color: $muted; line-height: 1.7; }.draft-preview pre { white-space: pre-wrap; word-break: break-word; color: #233c5e; font-family: var(--xy-font-body, sans-serif); font-size: 14px; line-height: 1.8; }
 .draft-preview__poster { width: 100%; max-height: 340px; margin: 12px 0; object-fit: cover; border-radius: 10px; }
-.agent-slide-enter-active, .agent-slide-leave-active { transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s; }.agent-slide-enter-from, .agent-slide-leave-to { transform: translateX(100%); opacity: .6; }
-.agent-fade-enter-active, .agent-fade-leave-active { transition: opacity .22s; }.agent-fade-enter-from, .agent-fade-leave-to { opacity: 0; }
+.agent-bubble-enter-active, .agent-bubble-leave-active { transition: transform .24s cubic-bezier(.2,.82,.22,1), opacity .18s ease; }
+.agent-bubble-enter-from, .agent-bubble-leave-to { opacity: 0; transform: translateY(12px) scale(.9); }
+.agent-bubble--below.agent-bubble-enter-from, .agent-bubble--below.agent-bubble-leave-to { transform: translateY(-12px) scale(.9); }
 @keyframes pet-pulse { 50% { box-shadow: 0 0 0 7px rgba(85,221,181,0); } }
 @keyframes pet-breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.018); } }
 @keyframes pet-aura-breathe { 0%, 100% { opacity: .36; transform: scale(.88); } 50% { opacity: .78; transform: scale(1.08); } }
 @keyframes pet-shadow-breathe { 0%, 100% { opacity: .65; transform: scaleX(1); } 50% { opacity: .38; transform: scaleX(.82); } }
-@keyframes pet-hop { 0%, 100% { transform: translateY(0) scale(1); } 18% { transform: translateY(2px) scale(1.08,.92); } 48% { transform: translateY(-18px) rotate(-4deg) scale(.96,1.06); } 68% { transform: translateY(-7px) rotate(3deg); } 86% { transform: translateY(1px) scale(1.05,.95); } }
-@keyframes pet-peek { 0%, 100% { transform: translate(0,0) rotate(0); } 28%, 68% { transform: translate(-9px,-3px) rotate(-9deg); } 48% { transform: translate(-12px,-5px) rotate(-12deg) scale(1.03); } }
-@keyframes pet-wiggle { 0%, 100% { transform: rotate(0); } 18% { transform: rotate(-7deg) scale(1.03); } 36% { transform: rotate(7deg); } 54% { transform: rotate(-5deg); } 72% { transform: rotate(4deg); } }
-@keyframes pet-float { 0%, 100% { transform: translate(0,0) rotate(0); } 28% { transform: translate(5px,-9px) rotate(5deg); } 58% { transform: translate(-4px,-13px) rotate(-4deg) scale(1.03); } 82% { transform: translate(2px,-5px) rotate(2deg); } }
 @keyframes pet-wave { 0%, 100% { transform: rotate(0) translateY(0); } 25% { transform: rotate(-8deg) translateY(-5px); } 50% { transform: rotate(6deg) translateY(-7px) scale(1.025); } 75% { transform: rotate(-4deg) translateY(-3px); } }
+@keyframes pet-focus { 0%, 100% { transform: rotate(0) translateY(0); } 30%, 72% { transform: rotate(7deg) translateY(-4px) scale(1.025); } 52% { transform: rotate(10deg) translateY(-7px) scale(1.035); } }
+@keyframes pet-think { 0%, 100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(6deg) translateY(-5px) scale(1.02); } }
 @keyframes pet-work { 0%, 100% { transform: translate(0,0) rotate(-2deg); } 35% { transform: translate(3px,-7px) rotate(4deg); } 70% { transform: translate(-2px,-4px) rotate(-4deg); } }
+@keyframes pet-happy { 0%, 100% { transform: rotate(-5deg) translateY(0) scale(1); } 50% { transform: rotate(6deg) translateY(-7px) scale(1.045); } }
+@keyframes pet-celebrate { 0%, 100% { transform: translateY(0) scale(1); } 16% { transform: translateY(3px) scale(1.08,.92); } 48% { transform: translateY(-22px) rotate(-5deg) scale(.96,1.07); } 72% { transform: translateY(-7px) rotate(4deg); } 88% { transform: translateY(1px) scale(1.06,.94); } }
+@keyframes pet-sleep { 0%, 100% { transform: translateY(1px) rotate(-1deg) scale(1); } 50% { transform: translateY(-2px) rotate(1deg) scale(1.012); } }
 @keyframes pet-work-aura { 0%, 100% { opacity: .42; transform: scale(.88); } 50% { opacity: .9; transform: scale(1.14); } }
-@keyframes pet-drag-grip { from { transform: translateY(0) rotate(-2deg) scale(1.02); } to { transform: translateY(-2px) rotate(2deg) scale(1.06); } }
+@keyframes pet-drag-happy { from { transform: translateY(0) rotate(-7deg) scale(1.03); } to { transform: translateY(-5px) rotate(7deg) scale(1.08); } }
 @keyframes pet-sparkle { 0% { opacity: 0; transform: translateY(5px) scale(.3) rotate(0); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateY(-15px) scale(1.25) rotate(55deg); } }
 @keyframes dot-wave { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-3px); opacity: 1; } }
+@keyframes proactive-arrive { from { opacity: 0; transform: translateY(9px) scale(.97); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 @media (max-width: 620px) {
-    .agent-drawer { top: auto; bottom: 0; width: 100%; height: min(88dvh, 760px); border-left: 0; border-top: 1px solid rgba(12,41,79,.1); border-radius: 18px 18px 0 0; }
-    .agent-slide-enter-from, .agent-slide-leave-to { transform: translateY(100%); }
-    .pet-launcher { right: 12px; bottom: 14px; width: 72px; height: 72px; }.pet-launcher--open { transform: translateY(-86dvh); opacity: 0; pointer-events: none; }
-    .agent-header { min-height: 68px; padding: 11px 15px; }.agent-content { padding: 15px 15px 24px; }.agent-composer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+    .agent-bubble { width: calc(100vw - 20px); height: min(620px, calc(100dvh - 20px), 68dvh); border-radius: 21px; }
+    .agent-bubble::after { width: 16px; height: 16px; bottom: -9px; }
+    .agent-bubble--below::after { top: -9px; bottom: auto; }
+    .pet-launcher { right: 12px; bottom: 14px; width: 78px; height: 78px; }
+    .agent-header { min-height: 62px; padding: 9px 12px; border-radius: 20px 20px 0 0; }
+    .agent-header__avatar { width: 40px; height: 40px; }
+    .agent-header h2 { font-size: 18px; }
+    .agent-settings { padding: 11px 12px 12px; }
+    .agent-settings__grid { gap: 7px; }
+    .agent-settings__foot span { max-width: 220px; }
+    .agent-content { padding: 13px 13px 20px; }
+    .proactive-card { grid-template-columns: 43px 1fr; padding-left: 8px; }
+    .proactive-card__mascot { width: 43px; height: 50px; }
+    .agent-composer { padding: 9px 11px max(10px, env(safe-area-inset-bottom)); border-radius: 0 0 19px 19px; }
+    .attachment-control > span, .composer-hint { display: none; }
+    .task-rail { padding: 8px 11px; }
+    .task-rail button { max-width: 145px; padding: 6px 9px; }
     .pet-launcher__bubble { top: -76px; right: 2px; width: min(238px, calc(100vw - 28px)); border-radius: 18px 18px 5px 18px; }
     .pet-launcher--bubble-right .pet-launcher__bubble { right: auto; left: 2px; border-radius: 18px 18px 18px 5px; }
     .pet-bubble__footer > span { display: none; }

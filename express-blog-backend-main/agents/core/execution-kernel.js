@@ -9,6 +9,8 @@ class AgentExecutionKernel {
     get isConfigured() { return this.model.isConfigured; }
     get hasVisionProvider() { return this.model.hasVisionProvider; }
     get lastProvider() { return this.model.lastProvider; }
+    get lastCall() { return this.model.lastCall; }
+    get providerHealth() { return this.model.circuitBreaker?.snapshot?.() || {}; }
 
     complete(messages, options) { return this.model.complete(messages, options); }
     json(messages, options) { return this.model.json(messages, options); }

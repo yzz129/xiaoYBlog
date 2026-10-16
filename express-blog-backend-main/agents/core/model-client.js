@@ -2,6 +2,8 @@ const OpenAI = require("openai");
 const { jsonrepair } = require("jsonrepair");
 
 const config = require("../../config");
+const { defaultProviderCircuitBreaker } = require("./provider-health");
+const { withAgentSpan } = require("./telemetry");
 
 function isFreeOpenRouterModel(model) {
     return model === "openrouter/free" || String(model || "").endsWith(":free");
@@ -43,16 +45,24 @@ class AgentModelClient {
             .map((name) => providerMap[String(name).toLowerCase()]).filter(Boolean)
             .filter((provider) => provider.name !== "openrouter" || isFreeOpenRouterModel(provider.model));
         this.requestTimeoutMs = options.requestTimeoutMs || agent.requestTimeoutMs || 120000;
+        this.circuitBreaker = options.circuitBreaker || defaultProviderCircuitBreaker;
         this.lastProvider = null;
+        this.lastCall = null;
     }
 
     get isConfigured() { return this.providers.length > 0; }
     get hasVisionProvider() { return this.providers.some((provider) => provider.vision); }
 
-    selectProviders(options = {}) {
+    async selectProviders(options = {}) {
         const providers = options.visionRequired ? this.providers.filter((provider) => provider.vision) : this.providers;
         if (!providers.length) throw new Error(options.visionRequired ? "未配置可处理图片的多模态模型" : "未配置可用的 Agent 模型提供方");
-        return providers;
+        const available = await this.circuitBreaker.select(providers);
+        if (!available.length) {
+            const error = new Error(`模型提供方熔断中，请在 ${this.circuitBreaker.nextRetryAfterMs(providers)}ms 后重试`);
+            error.code = "MODEL_CIRCUIT_OPEN";
+            throw error;
+        }
+        return available;
     }
 
     createClient(provider) {
@@ -60,21 +70,44 @@ class AgentModelClient {
     }
 
     async complete(messages, options = {}) {
+        const startedAt = Date.now();
         const errors = [];
-        for (const provider of this.selectProviders(options)) {
+        const attempts = [];
+        for (const provider of await this.selectProviders(options)) {
+            const attemptStartedAt = Date.now();
             try {
-                const response = await this.createClient(provider).chat.completions.create({
+                const response = await withAgentSpan("agent.model.complete", {
+                    "agent.model.provider": provider.name,
+                    "gen_ai.request.model": provider.model,
+                    "agent.model.json": Boolean(options.json),
+                }, () => this.createClient(provider).chat.completions.create({
                     model: provider.model, messages: normalizeMessages(messages), temperature: options.temperature ?? 0.25,
                     max_tokens: options.maxTokens || 2200, ...(options.json ? { response_format: { type: "json_object" } } : {}),
-                });
+                }));
                 const text = responseText(response).trim();
                 if (!text) throw new Error("模型返回了空内容");
+                await this.circuitBreaker.recordSuccess(provider.name);
                 this.lastProvider = { name: provider.name, model: response.model || provider.model };
+                attempts.push({ provider: provider.name, status: "completed", durationMs: Date.now() - attemptStartedAt });
+                this.lastCall = {
+                    status: "completed",
+                    provider: this.lastProvider,
+                    durationMs: Date.now() - startedAt,
+                    attempts,
+                    usage: response.usage ? {
+                        promptTokens: Number(response.usage.prompt_tokens || 0),
+                        completionTokens: Number(response.usage.completion_tokens || 0),
+                        totalTokens: Number(response.usage.total_tokens || 0),
+                    } : null,
+                };
                 return text;
             } catch (error) {
+                await this.circuitBreaker.recordFailure(provider.name, error);
+                attempts.push({ provider: provider.name, status: "failed", durationMs: Date.now() - attemptStartedAt, code: String(error?.status || error?.code || "MODEL_ERROR") });
                 errors.push(`${provider.name}: ${error?.status ? `HTTP ${error.status}` : error?.code || error.message}`);
             }
         }
+        this.lastCall = { status: "failed", durationMs: Date.now() - startedAt, attempts };
         throw new Error(`所有模型提供方均不可用（${errors.join("；")}）`);
     }
 
@@ -83,12 +116,18 @@ class AgentModelClient {
     }
 
     async streamChat({ messages, temperature = 0.5, maxTokens = 4096, onToken }) {
+        const startedAt = Date.now();
         const errors = [];
-        for (const provider of this.selectProviders()) {
+        const attempts = [];
+        for (const provider of await this.selectProviders()) {
+            const attemptStartedAt = Date.now();
             try {
-                const stream = await this.createClient(provider).chat.completions.create({
+                const stream = await withAgentSpan("agent.model.stream", {
+                    "agent.model.provider": provider.name,
+                    "gen_ai.request.model": provider.model,
+                }, () => this.createClient(provider).chat.completions.create({
                     model: provider.model, messages: normalizeMessages(messages), temperature, max_tokens: maxTokens, stream: true,
-                });
+                }));
                 let fullText = "";
                 for await (const chunk of stream) {
                     const token = chunk?.choices?.[0]?.delta?.content || "";
@@ -96,12 +135,24 @@ class AgentModelClient {
                     fullText += token;
                     if (onToken) await onToken(token);
                 }
+                await this.circuitBreaker.recordSuccess(provider.name);
                 this.lastProvider = { name: provider.name, model: provider.model };
+                attempts.push({ provider: provider.name, status: "completed", durationMs: Date.now() - attemptStartedAt });
+                this.lastCall = {
+                    status: "completed",
+                    provider: this.lastProvider,
+                    durationMs: Date.now() - startedAt,
+                    attempts,
+                    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, streamedCharacters: fullText.length },
+                };
                 return fullText;
             } catch (error) {
+                await this.circuitBreaker.recordFailure(provider.name, error);
+                attempts.push({ provider: provider.name, status: "failed", durationMs: Date.now() - attemptStartedAt, code: String(error?.status || error?.code || "MODEL_ERROR") });
                 errors.push(`${provider.name}: ${error?.status ? `HTTP ${error.status}` : error?.code || error.message}`);
             }
         }
+        this.lastCall = { status: "failed", durationMs: Date.now() - startedAt, attempts };
         throw new Error(`所有模型提供方均不可用（${errors.join("；")}）`);
     }
 

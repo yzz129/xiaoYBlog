@@ -1,7 +1,11 @@
 const express = require("express");
 
+const { aggregateTaskDiagnostics, summarizeTaskDiagnostics } = require("../agents/core/diagnostics");
 const runtime = require("../agents/pet-agent/runtime");
 const store = require("../agents/pet-agent/task-store");
+const loopStore = require("../agents/pet-agent/agent-loop-store");
+const { isPublicImageUrl } = require("../agents/pet-agent/tools");
+const { isGraphTask } = require("../agents/pet-agent/execution-policy");
 
 const router = express.Router();
 
@@ -23,7 +27,7 @@ function normalizeAttachments(value) {
     return value.slice(0, 6).map((item) => {
         try {
             const url = new URL(String(item?.url || ""));
-            if (!["http:", "https:"].includes(url.protocol)) return null;
+            if (!["http:", "https:"].includes(url.protocol) || !isPublicImageUrl(url.toString())) return null;
             return { type: "image", url: url.toString(), name: String(item?.name || "图片").slice(0, 120) };
         } catch (_error) {
             return null;
@@ -45,6 +49,56 @@ function parseNaturalSchedule(goal) {
     date.setHours(hour, minute, 0, 0);
     return date;
 }
+
+router.get("/profile", async (req, res) => {
+    try {
+        const ownerId = userId(req);
+        const [profile, interactions] = await Promise.all([
+            loopStore.getProfile(ownerId),
+            loopStore.getRecentInteractions(ownerId, req.query.limit || 10),
+        ]);
+        res.send({ code: "0", data: { profile, interactions } });
+    } catch (error) {
+        sendError(res, error.message || "读取小Y偏好失败");
+    }
+});
+
+router.patch("/profile", async (req, res) => {
+    try {
+        const updates = req.body?.settings || req.body || {};
+        res.send({ code: "0", data: await loopStore.updateSettings(userId(req), updates) });
+    } catch (error) {
+        sendError(res, error.message || "保存小Y偏好失败");
+    }
+});
+
+router.get("/interactions", async (req, res) => {
+    try {
+        res.send({ code: "0", data: await loopStore.getRecentInteractions(userId(req), req.query.limit || 20) });
+    } catch (error) {
+        sendError(res, error.message || "读取互动记录失败");
+    }
+});
+
+router.post("/interactions/:id/state", async (req, res) => {
+    try {
+        const interaction = await loopStore.setInteractionState(userId(req), req.params.id, String(req.body?.state || "seen"));
+        if (!interaction) return sendError(res, "互动消息不存在", "016404");
+        res.send({ code: "0", data: interaction });
+    } catch (error) {
+        sendError(res, error.message || "更新互动状态失败");
+    }
+});
+
+router.post("/interactions/:id/feedback", async (req, res) => {
+    try {
+        const interaction = await loopStore.recordFeedback(userId(req), req.params.id, String(req.body?.feedback || ""));
+        if (!interaction) return sendError(res, "互动消息不存在", "016404");
+        res.send({ code: "0", data: interaction });
+    } catch (error) {
+        sendError(res, error.message || "保存反馈失败");
+    }
+});
 
 router.post("/tasks", async (req, res) => {
     const goal = String(req.body?.message || req.body?.goal || "").trim();
@@ -68,6 +122,7 @@ router.post("/tasks", async (req, res) => {
             status,
             attachments: normalizeAttachments(req.body?.attachments),
         });
+        loopStore.learnFromText(ownerId, goal).catch((error) => console.error("[Pet Agent Loop] learn task failed:", error));
         await store.addEvent(task.id, {
             type: "status",
             title: scheduledAt ? "任务已安排" : "任务已进入队列",
@@ -90,6 +145,27 @@ router.get("/tasks", async (req, res) => {
     }
 });
 
+router.get("/metrics", async (req, res) => {
+    try {
+        const ownerId = userId(req);
+        const tasks = await store.listTasks(ownerId, req.query.limit);
+        const detailed = (await Promise.all(tasks.map((task) => store.getTaskWithEvents(task.id, ownerId)))).filter(Boolean);
+        res.send({ code: "0", data: { ...aggregateTaskDiagnostics(detailed), orchestration: runtime.schedulerStatus() } });
+    } catch (error) {
+        sendError(res, error.message || "生成 Agent 健康指标失败");
+    }
+});
+
+router.get("/tasks/:id/diagnostics", async (req, res) => {
+    try {
+        const task = await store.getTaskWithEvents(req.params.id, userId(req));
+        if (!task) return sendError(res, "任务不存在", "016404");
+        res.send({ code: "0", data: summarizeTaskDiagnostics(task) });
+    } catch (error) {
+        sendError(res, error.message || "生成任务诊断失败");
+    }
+});
+
 router.get("/tasks/:id", async (req, res) => {
     try {
         const task = await store.getTaskWithEvents(req.params.id, userId(req));
@@ -107,12 +183,19 @@ router.post("/tasks/:id/messages", async (req, res) => {
         const task = await store.getTask(req.params.id, userId(req));
         if (!task) return sendError(res, "任务不存在", "016404");
         const attachments = normalizeAttachments(req.body?.attachments);
+        if (isGraphTask(task)) {
+            await store.queueGraphResume(task, { kind: "input", content, attachments });
+            await store.addEvent(task.id, { type: "message", title: "你补充了要求", content, status: "completed" });
+            runtime.kick(task.id);
+            return res.send({ code: "0", data: await store.getTaskWithEvents(task.id, userId(req)) });
+        }
         const context = {
             ...(task.context || {}),
             attachments: [...(task.context?.attachments || []), ...attachments].slice(-6),
             observations: [...(task.context?.observations || []), { tool: "user_instruction", summary: content, data: { content } }],
         };
         await store.updateTask(task.id, { context, status: "queued", nextRetryAt: null, lastError: "" });
+        loopStore.learnFromText(userId(req), content).catch((error) => console.error("[Pet Agent Loop] learn message failed:", error));
         await store.addEvent(task.id, { type: "message", title: "你补充了要求", content, status: "completed" });
         runtime.kick(task.id);
         res.send({ code: "0", data: await store.getTaskWithEvents(task.id, userId(req)) });
@@ -123,9 +206,10 @@ router.post("/tasks/:id/messages", async (req, res) => {
 
 router.post("/tasks/:id/approval", async (req, res) => {
     try {
+        if (typeof req.body?.approved !== "boolean") return sendError(res, "approved 必须是布尔值", "016400");
         const task = await store.getTask(req.params.id, userId(req));
         if (!task) return sendError(res, "任务不存在", "016404");
-        await runtime.approveTask(task, Boolean(req.body?.approved));
+        await runtime.approveTask(task, req.body.approved);
         res.send({ code: "0", data: await store.getTaskWithEvents(task.id, userId(req)) });
     } catch (error) {
         sendError(res, error.message || "处理确认失败");
@@ -136,7 +220,8 @@ router.post("/tasks/:id/pause", async (req, res) => {
     try {
         const task = await store.getTask(req.params.id, userId(req));
         if (!task) return sendError(res, "任务不存在", "016404");
-        await store.updateTask(task.id, { status: "paused" });
+        if (isGraphTask(task)) await store.controlGraphTask(task, "pause");
+        else await store.updateTask(task.id, { status: "paused" });
         await store.addEvent(task.id, { type: "status", title: "任务已暂停", content: "你可以随时继续", status: "waiting" });
         res.send({ code: "0", data: await store.getTaskWithEvents(task.id, userId(req)) });
     } catch (error) {
@@ -148,7 +233,8 @@ router.post("/tasks/:id/resume", async (req, res) => {
     try {
         const task = await store.getTask(req.params.id, userId(req));
         if (!task) return sendError(res, "任务不存在", "016404");
-        await store.updateTask(task.id, { status: "queued", nextRetryAt: null, lastError: "" });
+        if (isGraphTask(task)) await store.controlGraphTask(task, "resume");
+        else await store.updateTask(task.id, { status: "queued", nextRetryAt: null, lastError: "" });
         await store.addEvent(task.id, { type: "status", title: "任务已继续", content: "小Y 将从保存的进度继续", status: "running" });
         runtime.kick(task.id);
         res.send({ code: "0", data: await store.getTaskWithEvents(task.id, userId(req)) });
@@ -161,7 +247,8 @@ router.post("/tasks/:id/cancel", async (req, res) => {
     try {
         const task = await store.getTask(req.params.id, userId(req));
         if (!task) return sendError(res, "任务不存在", "016404");
-        await store.updateTask(task.id, { status: "cancelled", pendingAction: null, completedAt: new Date() });
+        if (isGraphTask(task)) await store.controlGraphTask(task, "cancel");
+        else await store.updateTask(task.id, { status: "cancelled", pendingAction: null, completedAt: new Date() });
         await store.addEvent(task.id, { type: "status", title: "任务已取消", content: "已停止后续步骤", status: "failed" });
         res.send({ code: "0", data: await store.getTaskWithEvents(task.id, userId(req)) });
     } catch (error) {

@@ -2,6 +2,7 @@ const crypto = require("crypto");
 
 const dbUtils = require("../../utils/db");
 const { emitAgentTaskUpdate } = require("../../utils/ws");
+const { selectExecution } = require("./execution-policy");
 
 let tablesReadyPromise = null;
 
@@ -143,14 +144,26 @@ async function createTask({ userId, title, goal, scheduledAt = null, timezone = 
     await ensureTables();
     const id = `pet_${crypto.randomUUID()}`;
     const maxSteps = Math.min(Math.max(Number(process.env.PET_AGENT_MAX_STEPS) || 24, 8), 60);
+    const maxTokens = Math.min(Math.max(Number(process.env.PET_AGENT_MAX_TOKENS_PER_TASK) || 100000, 10000), 2000000);
+    const maxRuntimeMs = Math.min(Math.max(Number(process.env.PET_AGENT_MAX_RUNTIME_MS) || 1800000, 60000), 24 * 60 * 60 * 1000);
     const context = {
+        execution: selectExecution(goal),
         iteration: 0,
         observations: [],
         artifacts: {},
         plan: [],
         attachments,
         retryState: {},
-        budget: { maxSteps, usedSteps: 0, maxToolCalls: maxSteps, usedToolCalls: 0 },
+        budget: {
+            maxSteps,
+            usedSteps: 0,
+            maxToolCalls: maxSteps,
+            usedToolCalls: 0,
+            maxTokens,
+            usedTokens: 0,
+            maxRuntimeMs,
+            runtimeStartedAt: null,
+        },
     };
     await dbUtils.query({
         sql: `INSERT INTO agent_task
@@ -265,6 +278,52 @@ function safeLeaseSeconds(value) {
     return Math.min(Math.max(Number(value) || 90, 30), 600);
 }
 
+/** Graph mutations are fenced by the database claim generation, including same-process reclaims. */
+async function updateGraphTask(id, workerId, generation, updates) {
+    const columns = { context: "context_json", pendingAction: "pending_action_json", result: "result_json", status: "status", lastError: "last_error", nextRetryAt: "next_retry_at", completedAt: "completed_at", lockedBy: "locked_by", lockExpiresAt: "lock_expires_at", heartbeatAt: "heartbeat_at" };
+    const json = new Set(["context", "pendingAction", "result"]);
+    const entries = Object.entries(updates).filter(([key]) => columns[key]);
+    if (!entries.length) throw new Error("Graph update requires fields");
+    const { results } = await dbUtils.query({
+        sql: `UPDATE agent_task SET ${entries.map(([key]) => `${columns[key]} = ?`).join(", ")}, update_time = NOW()
+              WHERE id = ? AND locked_by = ? AND attempt_count = ? AND status = 'running' AND lock_expires_at > NOW()`,
+        values: [...entries.map(([key, value]) => json.has(key) ? serialize(value) : value), id, workerId, generation],
+    });
+    if (Number(results.affectedRows) !== 1) {
+        const error = new Error("任务已暂停、取消或执行租约已失效");
+        error.code = "GRAPH_EXECUTION_STOPPED";
+        throw error;
+    }
+    return getTask(id);
+}
+
+async function queueGraphResume(task, input) {
+    const approval = input.kind === "approval";
+    const { results } = await dbUtils.query({
+        sql: `UPDATE agent_task SET status = 'queued', next_retry_at = NULL, last_error = '',
+                  context_json = JSON_SET(context_json, '$.executionResume', JSON_EXTRACT(?, '$')), update_time = NOW()
+              WHERE id = ? AND user_id = ? AND status = ?
+                AND (locked_by IS NULL OR lock_expires_at <= NOW())
+                ${approval ? "AND JSON_UNQUOTE(JSON_EXTRACT(pending_action_json, '$.idempotencyKey')) = ? AND JSON_EXTRACT(pending_action_json, '$.executionStartedAt') IS NULL" : "AND pending_action_json IS NULL"}`,
+        values: [JSON.stringify(input), task.id, task.userId, approval ? "waiting_approval" : "waiting_input", ...(approval ? [input.key] : [])],
+    });
+    if (Number(results.affectedRows) !== 1) throw new Error("任务状态已变化，请刷新后重试；仅等待输入的任务可追加指令");
+}
+
+async function controlGraphTask(task, action) {
+    const statuses = { pause: ["running", "queued", "scheduled", "waiting_input", "waiting_approval"], resume: ["paused"], cancel: ["running", "queued", "scheduled", "paused", "waiting_input", "waiting_approval"] };
+    if (!statuses[action]) throw new Error("不支持的任务操作");
+    const status = { pause: "paused", resume: "queued", cancel: "cancelled" }[action];
+    const { results } = await dbUtils.query({
+        sql: `UPDATE agent_task SET status = ?, next_retry_at = NULL, update_time = NOW()
+                ${action === "cancel" ? ", pending_action_json = NULL, completed_at = NOW()" : ""}
+              WHERE id = ? AND user_id = ? AND status IN (${statuses[action].map(() => "?").join(",")})
+                AND JSON_EXTRACT(pending_action_json, '$.executionStartedAt') IS NULL`,
+        values: [status, task.id, task.userId, ...statuses[action]],
+    });
+    if (Number(results.affectedRows) !== 1) throw new Error("当前状态不允许此操作，或已确认的写操作正在执行");
+}
+
 async function claimTask(id, workerId, leaseSeconds = 90) {
     await ensureTables();
     const lease = safeLeaseSeconds(leaseSeconds);
@@ -299,18 +358,19 @@ async function claimApproval(id, workerId, leaseSeconds = 90) {
     return Number(results.affectedRows || 0) === 1 ? getTask(id) : null;
 }
 
-async function heartbeatTask(id, workerId, leaseSeconds = 90) {
+async function heartbeatTask(id, workerId, leaseSeconds = 90, generation = null) {
     await ensureTables();
     const { results } = await dbUtils.query({
         sql: `UPDATE agent_task
               SET heartbeat_at = NOW(), lock_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND), update_time = NOW()
-              WHERE id = ? AND status = 'running' AND locked_by = ?`,
-        values: [safeLeaseSeconds(leaseSeconds), id, workerId],
+              WHERE id = ? AND status = 'running' AND locked_by = ?
+              ${generation === null ? "" : "AND attempt_count = ? AND lock_expires_at > NOW()"}`,
+        values: [safeLeaseSeconds(leaseSeconds), id, workerId, ...(generation === null ? [] : [generation])],
     });
     return Number(results.affectedRows || 0) === 1;
 }
 
-async function releaseClaim(id, workerId, updates = {}) {
+async function releaseClaim(id, workerId, updates = {}, generation = null) {
     await ensureTables();
     const columnMap = {
         status: "status",
@@ -329,9 +389,9 @@ async function releaseClaim(id, workerId, updates = {}) {
         assignments.push(`${columnMap[key]} = ?`);
         values.push(jsonFields.has(key) ? serialize(value) : value);
     });
-    values.push(id, workerId);
+    values.push(id, workerId, ...(generation === null ? [] : [generation]));
     await dbUtils.query({
-        sql: `UPDATE agent_task SET ${assignments.join(", ")}, update_time = NOW() WHERE id = ? AND locked_by = ?`,
+        sql: `UPDATE agent_task SET ${assignments.join(", ")}, update_time = NOW() WHERE id = ? AND locked_by = ? ${generation === null ? "" : "AND attempt_count = ?"}`,
         values,
     });
     return getTask(id);
@@ -368,6 +428,9 @@ async function addEvent(taskId, event) {
 }
 
 module.exports = {
+    controlGraphTask,
+    queueGraphResume,
+    updateGraphTask,
     addEvent,
     claimApproval,
     claimTask,

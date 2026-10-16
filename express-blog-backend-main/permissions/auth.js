@@ -70,7 +70,13 @@ authMap.set("/agent/reset", { role: "user" });
 authMap.set("/agent/stream-section/:sessionId/:sectionIndex", { role: "user" });
 
 authMap.set("/pet-agent/tasks", { role: "user" });
+authMap.set("/pet-agent/metrics", { role: "user" });
+authMap.set("/pet-agent/profile", { role: "user" });
+authMap.set("/pet-agent/interactions", { role: "user" });
+authMap.set("/pet-agent/interactions/:id/state", { role: "user" });
+authMap.set("/pet-agent/interactions/:id/feedback", { role: "user" });
 authMap.set("/pet-agent/tasks/:id", { role: "user" });
+authMap.set("/pet-agent/tasks/:id/diagnostics", { role: "user" });
 authMap.set("/pet-agent/tasks/:id/messages", { role: "user" });
 authMap.set("/pet-agent/tasks/:id/approval", { role: "user" });
 authMap.set("/pet-agent/tasks/:id/pause", { role: "user" });

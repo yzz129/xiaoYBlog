@@ -11,6 +11,7 @@ const CHATROOM_NAMESPACE = "/chatroom";
 const NOTIFY_NAMESPACE = "/notify";
 const HISTORY_KEY = "blog:chat:history";
 const PRESENCE_KEY = "blog:chat:presence";
+const AGENT_PRESENCE_KEY = "blog:agent:presence";
 
 function numberInRange(value, fallback, min, max) {
     const parsed = Number(value);
@@ -21,6 +22,8 @@ const MAX_HISTORY = numberInRange(process.env.CHAT_HISTORY_LIMIT, 100, 10, 1000)
 const PRESENCE_TTL_SECONDS = numberInRange(process.env.CHAT_PRESENCE_TTL_SECONDS, 45, 15, 300);
 const SOCKET_RATE_WINDOW_SECONDS = numberInRange(process.env.CHAT_RATE_WINDOW_SECONDS, 10, 1, 60);
 const SOCKET_RATE_LIMIT = numberInRange(process.env.CHAT_RATE_LIMIT, 8, 1, 100);
+const AGENT_PRESENCE_TTL_SECONDS = numberInRange(process.env.PET_AGENT_PRESENCE_TTL_SECONDS, 45, 20, 300);
+const AGENT_ACTIVE_WINDOW_MS = numberInRange(process.env.PET_AGENT_ACTIVE_WINDOW_MS, 300_000, 30_000, 1_800_000);
 
 let io;
 
@@ -76,6 +79,7 @@ async function loadUserProfile(socket) {
 }
 
 const presenceSocketKey = (socketId) => `blog:chat:socket:${socketId}`;
+const agentPresenceSocketKey = (socketId) => `blog:agent:socket:${socketId}`;
 
 async function touchPresence(profile, socketId) {
     const redis = await getRedisClient();
@@ -89,6 +93,39 @@ async function touchPresence(profile, socketId) {
 async function removePresence(socketId) {
     const redis = await getRedisClient();
     await Promise.all([redis.del(presenceSocketKey(socketId)), redis.zRem(PRESENCE_KEY, socketId)]);
+}
+
+async function touchAgentPresence(userId, socketId, activeAt = Date.now()) {
+    const redis = await getRedisClient();
+    const expiresAt = Date.now() + AGENT_PRESENCE_TTL_SECONDS * 1000;
+    const profile = { userId: String(userId), socketId, activeAt: Number(activeAt) || Date.now() };
+    await Promise.all([
+        redis.setEx(agentPresenceSocketKey(socketId), AGENT_PRESENCE_TTL_SECONDS, JSON.stringify(profile)),
+        redis.zAdd(AGENT_PRESENCE_KEY, [{ score: expiresAt, value: socketId }]),
+    ]);
+}
+
+async function removeAgentPresence(socketId) {
+    const redis = await getRedisClient();
+    await Promise.all([redis.del(agentPresenceSocketKey(socketId)), redis.zRem(AGENT_PRESENCE_KEY, socketId)]);
+}
+
+async function getActiveAgentUserIds() {
+    const redis = await getRedisClient();
+    const now = Date.now();
+    await redis.zRemRangeByScore(AGENT_PRESENCE_KEY, 0, now);
+    const socketIds = await redis.zRangeByScore(AGENT_PRESENCE_KEY, now, "+inf");
+    if (!socketIds.length) return [];
+    const profiles = await redis.mGet(socketIds.map(agentPresenceSocketKey));
+    const activeAfter = now - AGENT_ACTIVE_WINDOW_MS;
+    const users = new Set();
+    profiles.filter(Boolean).forEach((raw) => {
+        try {
+            const profile = JSON.parse(raw);
+            if (profile.userId && Number(profile.activeAt || 0) >= activeAfter) users.add(String(profile.userId));
+        } catch (_error) {}
+    });
+    return Array.from(users);
 }
 
 async function serializeOnlineUsers() {
@@ -198,9 +235,28 @@ function notifyHandler() {
     const namespace = io.of(NOTIFY_NAMESPACE);
     namespace.use(requireSession);
     namespace.on("connection", async (socket) => {
-        const userId = String(socket.data.currentUser.id);
-        socket.join(`user:${userId}`);
-        await emitUnreadSummaryToUser(userId);
+        let heartbeat;
+        try {
+            const userId = String(socket.data.currentUser.id);
+            let activeAt = Date.now();
+            socket.join(`user:${userId}`);
+            await touchAgentPresence(userId, socket.id, activeAt);
+            await emitUnreadSummaryToUser(userId);
+            heartbeat = setInterval(() => touchAgentPresence(userId, socket.id, activeAt).catch(console.error), 15000);
+            heartbeat.unref?.();
+            socket.on("presence:activity", () => {
+                activeAt = Date.now();
+                touchAgentPresence(userId, socket.id, activeAt).catch(console.error);
+            });
+            socket.on("disconnect", () => {
+                if (heartbeat) clearInterval(heartbeat);
+                removeAgentPresence(socket.id).catch((error) => console.error("[Socket notify] presence cleanup failed:", error));
+            });
+        } catch (error) {
+            if (heartbeat) clearInterval(heartbeat);
+            console.error("[Socket notify] connection failed:", error);
+            socket.disconnect(true);
+        }
     });
 }
 
@@ -241,6 +297,11 @@ function emitAgentTaskUpdate(userId, payload) {
     io.of(NOTIFY_NAMESPACE).to(`user:${userId}`).emit("agent:task", payload);
 }
 
+function emitAgentProactive(userId, payload) {
+    if (!io || !userId || !payload) return;
+    io.of(NOTIFY_NAMESPACE).to(`user:${userId}`).emit("agent:proactive", payload);
+}
+
 function disconnectUserSockets(userId) {
     if (!io || !userId) return;
     const room = `user:${userId}`;
@@ -248,4 +309,12 @@ function disconnectUserSockets(userId) {
     io.of(NOTIFY_NAMESPACE).in(room).disconnectSockets(true);
 }
 
-module.exports = { disconnectUserSockets, emitAgentTaskUpdate, emitDirectMessageToUsers, emitUnreadSummaryToUser, startWs };
+module.exports = {
+    disconnectUserSockets,
+    emitAgentProactive,
+    emitAgentTaskUpdate,
+    emitDirectMessageToUsers,
+    emitUnreadSummaryToUser,
+    getActiveAgentUserIds,
+    startWs,
+};

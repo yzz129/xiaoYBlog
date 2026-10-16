@@ -1,20 +1,49 @@
+const net = require("net");
+
 const config = require("../../config");
 const dbUtils = require("../../utils/db");
 const { getFetch } = require("../../utils/fetch");
+const {
+    getUserSummary,
+    listFriendRequests,
+    resolveFriendRequest,
+    sendDirectMessage,
+    sendFriendRequest,
+} = require("../../utils/social");
 const AgentExecutionKernel = require("../core/execution-kernel");
+const { AgentContractError, validateSchema, validateToolArguments } = require("../core/contracts");
 const { generateImage } = require("./image-service");
 
+const stringField = (maxLength, options = {}) => ({
+    type: "string",
+    minLength: options.optional ? 0 : 1,
+    maxLength,
+    ...(options.enum ? { enum: options.enum } : {}),
+});
+const integerId = { type: "integer", minimum: 1 };
+const inputSchema = (properties, required = Object.keys(properties)) => ({
+    type: "object",
+    additionalProperties: false,
+    properties,
+    required,
+});
+
 const TOOL_DEFINITIONS = [
-    { name: "search_blog", description: "按关键词搜索站内公开博客", input: { query: "string" } },
-    { name: "get_blog", description: "读取指定 ID 的博客全文与作者", input: { articleId: "number" } },
-    { name: "search_users", description: "搜索站内用户", input: { keyword: "string" } },
-    { name: "follow_user", description: "关注一个站内用户；这是可撤销动作", input: { userId: "number" } },
-    { name: "web_search", description: "通过百度 AI 搜索与 Tavily 聚合搜索公开网页和图片", input: { query: "string", includeImages: "boolean?" } },
-    { name: "analyze_image", description: "使用多模态模型理解公开图片或用户附件", input: { imageUrl: "string", question: "string" } },
-    { name: "draft_blog", description: "根据文字、图片和研究资料撰写富媒体 Markdown 博客草稿，不会发布", input: { topic: "string", instructions: "string" } },
-    { name: "generate_blog_image", description: "按草稿配图计划生成图片、保存到对象存储并插入 Markdown", input: { prompt: "string", alt: "string", placement: "cover|inline", sectionTitle: "string?" } },
-    { name: "publish_blog", description: "发布当前草稿；始终需要用户批准", input: { title: "string?" } },
-    { name: "update_blog", description: "覆盖更新已有博客及封面；始终需要用户批准", input: { articleId: "number", title: "string", content: "string", summary: "string", poster: "string?" } },
+    { name: "search_blog", description: "按关键词搜索站内公开博客", inputSchema: inputSchema({ query: stringField(80) }) },
+    { name: "get_blog", description: "读取指定 ID 的博客全文与作者", inputSchema: inputSchema({ articleId: integerId }) },
+    { name: "search_users", description: "搜索站内用户", inputSchema: inputSchema({ keyword: stringField(80) }) },
+    { name: "follow_user", description: "关注一个站内用户；执行前始终需要用户批准", inputSchema: inputSchema({ userId: integerId }) },
+    { name: "list_friend_requests", description: "查看当前用户收到或发出的好友申请；这是只读操作", inputSchema: inputSchema({ box: stringField(16, { enum: ["incoming", "outgoing"] }) }, []) },
+    { name: "send_friend_request", description: "向站内用户发送好友申请；执行前始终需要用户批准", inputSchema: inputSchema({ userId: integerId, message: stringField(255, { optional: true }) }, ["userId"]) },
+    { name: "accept_friend_request", description: "接受一条收到的好友申请；执行前始终需要用户批准", inputSchema: inputSchema({ requestId: integerId }) },
+    { name: "reject_friend_request", description: "拒绝一条收到的好友申请；执行前始终需要用户批准", inputSchema: inputSchema({ requestId: integerId }) },
+    { name: "send_direct_message", description: "向站内用户发送私信；执行前始终需要用户批准", inputSchema: inputSchema({ userId: integerId, content: stringField(2000) }) },
+    { name: "web_search", description: "通过百度 AI 搜索与 Tavily 聚合搜索公开网页和图片", inputSchema: inputSchema({ query: stringField(160), includeImages: { type: "boolean" } }, ["query"]) },
+    { name: "analyze_image", description: "使用多模态模型理解公开图片或用户附件", inputSchema: inputSchema({ imageUrl: stringField(10000000), question: stringField(600) }, ["imageUrl"]) },
+    { name: "draft_blog", description: "根据文字、图片和研究资料撰写富媒体 Markdown 博客草稿，不会发布", inputSchema: inputSchema({ topic: stringField(160), instructions: stringField(500) }) },
+    { name: "generate_blog_image", description: "按草稿配图计划生成图片、保存到对象存储并插入 Markdown", inputSchema: inputSchema({ prompt: stringField(700), alt: stringField(160), placement: stringField(16, { enum: ["cover", "inline"] }), sectionTitle: stringField(120, { optional: true }) }, ["prompt", "alt", "placement"]) },
+    { name: "publish_blog", description: "发布当前草稿；始终需要用户批准", inputSchema: inputSchema({ title: stringField(120, { optional: true }) }, []) },
+    { name: "update_blog", description: "覆盖更新已有博客及封面；始终需要用户批准", inputSchema: inputSchema({ articleId: integerId, title: stringField(120), content: stringField(100000), summary: stringField(1000), poster: stringField(5000, { optional: true }) }, ["articleId", "title", "content", "summary"]) },
 ];
 
 function compactText(value, max = 240) {
@@ -115,6 +144,26 @@ async function followUser(args, actor) {
     return {
         summary: results.affectedRows ? `已关注 ${users[0].name}` : `你已经关注了 ${users[0].name}`,
         data: { userId, name: users[0].name, alreadyFollowing: !results.affectedRows },
+    };
+}
+
+async function listFriendRequestsTool(args, actor) {
+    const result = await listFriendRequests(actor.userId, args.box);
+    const items = result.items.map((item) => ({
+        id: Number(item.id),
+        requesterId: Number(item.requester_id),
+        recipientId: Number(item.recipient_id),
+        status: item.status,
+        message: item.message || "",
+        userId: Number(item.user_id),
+        username: item.username,
+        name: item.nick_name || item.username,
+        avatar: item.avatar || "",
+        updatedAt: item.update_time,
+    }));
+    return {
+        summary: `${result.box === "outgoing" ? "发出" : "收到"}的好友申请共 ${items.length} 条`,
+        data: { box: result.box, items },
     };
 }
 
@@ -224,16 +273,42 @@ async function webSearch(args) {
 }
 
 function buildReferenceText(context) {
-    return (context.observations || []).slice(-6).map((item) => {
-        return `${item.tool}: ${JSON.stringify(item.data || {}).slice(0, 3500)}`;
-    }).join("\n\n");
+    const payload = (context.observations || []).slice(-6).map((item) => ({
+        tool: compactText(item.tool, 80),
+        summary: compactText(item.summary, 240),
+        data: item.data || {},
+    }));
+    const serialized = JSON.stringify(payload).slice(0, 18000)
+        .replace(/<\/?untrusted_observations>/gi, "[removed-delimiter]");
+    return `<untrusted_observations>\n${serialized}\n</untrusted_observations>`;
+}
+
+function isPrivateHostname(hostname) {
+    const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+    if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+    if (net.isIP(host) === 4) {
+        const [a, b] = host.split(".").map(Number);
+        return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254)
+            || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+            || a >= 224;
+    }
+    if (net.isIP(host) === 6) {
+        return host === "::1" || host === "::" || host.startsWith("fc") || host.startsWith("fd")
+            || host.startsWith("::ffff:") || /^fe[89ab]/.test(host);
+    }
+    return false;
 }
 
 function isPublicImageUrl(value) {
-    if (/^data:image\/(png|jpeg|webp|gif);base64,/i.test(String(value || ""))) return true;
+    const raw = String(value || "");
+    if (/^data:image\/(png|jpeg|webp|gif);base64,[a-z0-9+/=\r\n]+$/i.test(raw)) return raw.length <= 8 * 1024 * 1024;
     try {
-        const url = new URL(String(value || ""));
-        return ["http:", "https:"].includes(url.protocol);
+        if (raw.length > 5000) return false;
+        const url = new URL(raw);
+        return ["http:", "https:"].includes(url.protocol)
+            && !url.username
+            && !url.password
+            && !isPrivateHostname(url.hostname);
     } catch (_error) {
         return false;
     }
@@ -402,7 +477,78 @@ async function generateBlogImage(args, actor) {
     };
 }
 
-function buildApproval(toolName, args, actor) {
+const APPROVAL_TOOLS = new Set([
+    "publish_blog",
+    "update_blog",
+    "follow_user",
+    "send_friend_request",
+    "accept_friend_request",
+    "reject_friend_request",
+    "send_direct_message",
+]);
+
+const APPROVED_ACTION_SCHEMAS = {
+    publish_blog: { ...inputSchema({
+        title: stringField(255),
+        content: stringField(200000),
+        summary: stringField(1000, { optional: true }),
+        poster: stringField(5000, { optional: true }),
+    }, ["title", "content"]), additionalProperties: true },
+    update_blog: inputSchema({
+        articleId: integerId,
+        title: stringField(255),
+        content: stringField(200000),
+        summary: stringField(1000, { optional: true }),
+        poster: stringField(5000, { optional: true }),
+    }, ["articleId", "title", "content"]),
+    follow_user: inputSchema({ userId: integerId }),
+    send_friend_request: inputSchema({ userId: integerId, message: stringField(255, { optional: true }) }, ["userId"]),
+    accept_friend_request: inputSchema({ requestId: integerId, requesterId: integerId }, ["requestId"]),
+    reject_friend_request: inputSchema({ requestId: integerId, requesterId: integerId }, ["requestId"]),
+    send_direct_message: inputSchema({ userId: integerId, content: stringField(2000) }),
+};
+
+function validateApprovedAction(action) {
+    if (!action || typeof action !== "object" || Array.isArray(action)) {
+        throw new AgentContractError("approval 必须是对象", { path: "approval" });
+    }
+    const allowed = new Set(["type", "label", "payload", "idempotencyKey", "planStepId", "executionStartedAt"]);
+    const unknown = Object.keys(action).filter((key) => !allowed.has(key));
+    if (unknown.length) throw new AgentContractError(`approval 包含未知字段：${unknown.join(", ")}`, { path: "approval" });
+    const type = validateSchema(action.type, { type: "string", enum: [...APPROVAL_TOOLS] }, "approval.type");
+    const payload = validateSchema(action.payload || {}, APPROVED_ACTION_SCHEMAS[type], `approval.${type}.payload`);
+    return {
+        type,
+        payload,
+        label: validateSchema(action.label || type, { type: "string", minLength: 1, maxLength: 300 }, "approval.label"),
+        idempotencyKey: validateSchema(action.idempotencyKey, { type: "string", minLength: 1, maxLength: 240 }, "approval.idempotencyKey"),
+        ...(action.planStepId ? { planStepId: validateSchema(action.planStepId, { type: "string", minLength: 1, maxLength: 160 }, "approval.planStepId") } : {}),
+        ...(action.executionStartedAt ? { executionStartedAt: validateSchema(action.executionStartedAt, { type: "string", minLength: 1, maxLength: 64 }, "approval.executionStartedAt") } : {}),
+    };
+}
+
+async function requireTargetUser(userId, actor) {
+    const normalizedId = Number(userId || 0);
+    if (!normalizedId || normalizedId === actor.userId) throw new Error("操作对象无效");
+    const user = await getUserSummary(normalizedId);
+    if (!user) throw new Error("目标用户不存在");
+    return user;
+}
+
+async function requirePendingFriendRequest(requestId, actor) {
+    const normalizedId = Number(requestId || 0);
+    const incoming = await listFriendRequests(actor.userId, "incoming");
+    const request = incoming.items.find((item) => Number(item.id) === normalizedId && item.status === "pending");
+    if (!request) throw new Error("好友申请不存在或已经处理");
+    return {
+        id: normalizedId,
+        requesterId: Number(request.requester_id),
+        name: request.nick_name || request.username,
+        message: request.message || "",
+    };
+}
+
+async function buildApproval(toolName, args, actor) {
     if (toolName === "publish_blog") {
         const draft = actor.task.context?.artifacts?.draft;
         if (!draft) throw new Error("当前没有可发布的草稿");
@@ -417,19 +563,56 @@ function buildApproval(toolName, args, actor) {
             action: { type: "update_blog", label: `更新文章 #${Number(args.articleId)}`, payload: args },
         };
     }
+    if (toolName === "follow_user") {
+        const user = await requireTargetUser(args.userId, actor);
+        return {
+            summary: `关注 ${user.name} 前需要你的确认`,
+            action: { type: "follow_user", label: `关注用户 ${user.name}`, payload: { userId: user.id } },
+        };
+    }
+    if (toolName === "send_friend_request") {
+        const user = await requireTargetUser(args.userId, actor);
+        const message = compactText(args.message, 255);
+        return {
+            summary: `向 ${user.name} 发送好友申请前需要你的确认`,
+            action: { type: "send_friend_request", label: `向 ${user.name} 发送好友申请`, payload: { userId: user.id, message } },
+        };
+    }
+    if (toolName === "accept_friend_request" || toolName === "reject_friend_request") {
+        const request = await requirePendingFriendRequest(args.requestId, actor);
+        const accepting = toolName === "accept_friend_request";
+        return {
+            summary: `${accepting ? "接受" : "拒绝"} ${request.name} 的好友申请前需要你的确认`,
+            action: {
+                type: toolName,
+                label: `${accepting ? "接受" : "拒绝"} ${request.name} 的好友申请`,
+                payload: { requestId: request.id, requesterId: request.requesterId },
+            },
+        };
+    }
+    if (toolName === "send_direct_message") {
+        const user = await requireTargetUser(args.userId, actor);
+        const content = compactText(args.content, 2000);
+        if (!content) throw new Error("私信内容不能为空");
+        return {
+            summary: `向 ${user.name} 发送私信前需要你的确认`,
+            action: { type: "send_direct_message", label: `向 ${user.name} 发送私信：${compactText(content, 60)}`, payload: { userId: user.id, content } },
+        };
+    }
     throw new Error("未知的审批动作");
 }
 
 async function executeTool(toolName, args, actor) {
-    if (toolName === "publish_blog" || toolName === "update_blog") {
-        const approval = buildApproval(toolName, args, actor);
+    const validatedArgs = validateToolArguments(toolName, args || {}, TOOL_DEFINITIONS);
+    if (APPROVAL_TOOLS.has(toolName)) {
+        const approval = await buildApproval(toolName, validatedArgs, actor);
         return { requiresApproval: true, ...approval };
     }
     const handlers = {
         search_blog: searchBlog,
         get_blog: getBlog,
         search_users: searchUsers,
-        follow_user: followUser,
+        list_friend_requests: listFriendRequestsTool,
         web_search: webSearch,
         analyze_image: analyzeImage,
         draft_blog: draftBlog,
@@ -437,10 +620,11 @@ async function executeTool(toolName, args, actor) {
     };
     const handler = handlers[toolName];
     if (!handler) throw new Error(`不支持的工具：${toolName}`);
-    return handler(args || {}, actor);
+    return handler(validatedArgs, actor);
 }
 
 async function performApprovedAction(action, actor) {
+    action = validateApprovedAction(action);
     if (action.type === "publish_blog") {
         const payload = action.payload || {};
         const { results } = await dbUtils.query({
@@ -463,7 +647,38 @@ async function performApprovedAction(action, actor) {
         });
         return { summary: `文章 #${articleId} 已更新`, data: { articleId, title: payload.title } };
     }
+    if (action.type === "follow_user") return followUser(action.payload || {}, actor);
+    if (action.type === "send_friend_request") {
+        const result = await sendFriendRequest(actor.userId, action.payload?.userId, action.payload?.message);
+        return {
+            summary: `已向 ${result.recipient.name} 发送好友申请`,
+            data: { userId: result.recipient.id, name: result.recipient.name, message: result.message },
+        };
+    }
+    if (action.type === "accept_friend_request" || action.type === "reject_friend_request") {
+        const accepting = action.type === "accept_friend_request";
+        const result = await resolveFriendRequest(actor.userId, action.payload?.requestId, accepting ? "accepted" : "rejected");
+        return {
+            summary: `已${accepting ? "接受" : "拒绝"} ${result.requester.name} 的好友申请`,
+            data: result,
+        };
+    }
+    if (action.type === "send_direct_message") {
+        const result = await sendDirectMessage(actor.userId, action.payload?.userId, action.payload?.content);
+        return {
+            summary: `私信已发送给 ${result.recipient.name}`,
+            data: { messageId: result.id, userId: result.recipient.id, name: result.recipient.name },
+        };
+    }
     throw new Error("未知的审批动作");
 }
 
-module.exports = { TOOL_DEFINITIONS, executeTool, performApprovedAction, webSearch };
+module.exports = {
+    TOOL_DEFINITIONS,
+    buildReferenceText,
+    executeTool,
+    isPublicImageUrl,
+    performApprovedAction,
+    validateApprovedAction,
+    webSearch,
+};
